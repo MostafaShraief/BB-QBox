@@ -1,3 +1,4 @@
+# --- START OF FILE ui/menu.py ---
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, 
                              QHBoxLayout, QFrame)
 from PyQt6.QtCore import Qt, QSize
@@ -10,7 +11,7 @@ class MainMenu(QWidget):
         super().__init__()
         self.app = app_instance
         self.setWindowTitle("BB-QBox")
-        self.resize(500, 600)
+        self.resize(500, 700) # Increased height for new button
         
         # RTL Check
         if ConfigManager.get_language() == "ar":
@@ -32,7 +33,7 @@ class MainMenu(QWidget):
                 background-color: #2b2b2b;
                 color: #ffffff;
                 font-family: 'Segoe UI';
-                font-size: 16px; /* Unified large font */
+                font-size: 16px; 
             }
             QLabel#Title {
                 font-size: 28px;
@@ -50,9 +51,9 @@ class MainMenu(QWidget):
                 border: 1px solid #505050;
                 border-radius: 10px;
                 color: #fff;
-                padding: 20px; /* Increased Padding */
+                padding: 20px; 
                 text-align: left;
-                font-size: 18px; /* Larger Text */
+                font-size: 18px; 
                 font-weight: 600;
                 margin-bottom: 10px;
             }
@@ -124,14 +125,18 @@ class MainMenu(QWidget):
         btn_cropper = self.create_btn(tr("menu_cropper"), "✂️")
         btn_extractor = self.create_btn(tr("menu_extractor"), "📝")
         btn_viewer = self.create_btn(tr("menu_viewer"), "👁️")
+        # New Button
+        btn_telegram = self.create_btn(tr("menu_telegram"), "✈️")
 
         btn_cropper.clicked.connect(self.open_cropper)
         btn_extractor.clicked.connect(self.open_extractor)
         btn_viewer.clicked.connect(self.open_viewer)
+        btn_telegram.clicked.connect(self.open_telegram)
 
         layout.addWidget(btn_cropper)
         layout.addWidget(btn_extractor)
         layout.addWidget(btn_viewer)
+        layout.addWidget(btn_telegram)
         
         layout.addStretch()
         
@@ -145,7 +150,7 @@ class MainMenu(QWidget):
         btn = QPushButton(f"  {icon}   {text}")
         btn.setObjectName("MenuBtn")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setMinimumHeight(80) # Force tall buttons
+        btn.setMinimumHeight(75) 
         return btn
 
     def toggle_language(self):
@@ -177,3 +182,10 @@ class MainMenu(QWidget):
         self.viewer = QuestionViewer()
         self.viewer.show()
         self.close()
+
+    def open_telegram(self):
+        from ui.telegram_sender import TelegramWindow
+        self.tg = TelegramWindow()
+        self.tg.show()
+        self.close()
+# --- END OF FILE ui/menu.py ---

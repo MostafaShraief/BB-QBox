@@ -89,9 +89,8 @@ class ImageCropperApp(QMainWindow):
             self.toolbar.addWidget(self.lbl_page_info)
             self.act_next = self.add_action("Next", tr("next"), lambda: self.navigate(1), "next")
         
-        self.toolbar.addSeparator()
-        self.add_action("Settings", tr("shortcuts_menu"), self.open_shortcuts_dialog, None)
-
+        # Removed "Settings" button to prevent crash
+        
         self.update_undo_redo_buttons()
 
         self.scene = EditorScene()
@@ -117,20 +116,6 @@ class ImageCropperApp(QMainWindow):
         action.triggered.connect(method)
         self.toolbar.addAction(action)
         return action
-
-    def open_shortcuts_dialog(self):
-        try:
-            # Local import to prevent circular dependency
-            from ui.dialogs import UnifiedSettingsDialog
-            d = UnifiedSettingsDialog(self)
-            d.tabs.setCurrentIndex(1) # Select Shortcuts tab
-            if d.exec():
-                self.close()
-                if not self.single_image_mode:
-                    self.win = ImageCropperApp()
-                    self.win.show()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Could not open shortcuts: {e}")
 
     def set_alignment(self, mode, label):
         self.merge_alignment = mode

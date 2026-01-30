@@ -4,7 +4,8 @@ TRANS = {
         "menu_cropper": "أداة قص الصور (PDF/صور)",
         "menu_extractor": "محول الأسئلة النصية (Txt)",
         "menu_viewer": "مستعرض بنك الأسئلة",
-        "menu_footer": "الإصدار 3.1 - إصلاحات شاملة",
+        "menu_telegram": "النشر عبر تيليجرام",
+        "menu_footer": "الإصدار 3.2 - ميزة النشر",
         "lang_switch": "Switch to English",
         "back_menu": "العودة للقائمة الرئيسية",
         "open_files": "فتح ملفات",
@@ -93,14 +94,36 @@ TRANS = {
         <p>استخدم هذا الخيار إذا كان الملف يحتوي على فصول متعددة (إعادة ترقيم من جديد).</p>
         <p><b>كيف يعمل؟</b><br>
         إذا وصل البرنامج للسؤال رقم 50، ثم وجد بعده السؤال رقم 1، سيفهم أن هذا فصل جديد، وسيقوم بحفظ الفصل الأول في مجلد منفصل، ويبدأ مجلداً جديداً للفصل الثاني.</p>
-        """
+        """,
+        "tg_title": "أداة النشر التلقائي على تيليجرام",
+        "tg_settings": "إعدادات الاتصال",
+        "tg_mode": "طريقة النشر:",
+        "tg_mode_bot": "وضع البوت (Bot API)",
+        "tg_mode_user": "وضع المستخدم (User API)",
+        "tg_bot_token": "توكن البوت (Bot Token):",
+        "tg_chat_id": "معرف القناة/المجموعة (Chat ID):",
+        "tg_api_id": "API ID:",
+        "tg_api_hash": "API Hash:",
+        "tg_select_bank": "اختر بنك الأسئلة:",
+        "tg_log": "سجل العمليات:",
+        "tg_start": "بدء النشر",
+        "tg_stop": "إيقاف",
+        "tg_save_creds": "حفظ بيانات الاتصال",
+        "tg_msg_saved": "تم حفظ البيانات بنجاح.",
+        "tg_err_no_bank": "يرجى اختيار بنك أسئلة.",
+        "tg_err_lib": "مكتبة Telethon غير مثبتة. لا يمكن استخدام وضع المستخدم.",
+        "tg_processing": "جاري إرسال سؤال رقم {}...",
+        "tg_done": "تم الانتهاء من النشر.",
+        "tg_stopped": "تم الإيقاف بواسطة المستخدم.",
+        "tg_wait": "انتظار {} ثواني..."
     },
     "en": {
         "app_title": "BB-QBox",
         "menu_cropper": "Image Cropper (PDF/Img)",
         "menu_extractor": "Text Question Extractor (Txt)",
         "menu_viewer": "Question Bank Viewer",
-        "menu_footer": "v3.1 - Stable Release",
+        "menu_telegram": "Telegram Publisher",
+        "menu_footer": "v3.2 - Publishing Feature",
         "lang_switch": "التبديل للعربية",
         "back_menu": "Back to Main Menu",
         "open_files": "Open",
@@ -184,6 +207,27 @@ TRANS = {
         <p>Lines below the answer line are saved as a detailed explanation.</p>
         <h3>3. Lecture Splitting</h3>
         <p>Use this if your file has multiple chapters (renumbering resets).</p>
-        """
+        """,
+        "tg_title": "Telegram Auto-Publisher",
+        "tg_settings": "Connection Settings",
+        "tg_mode": "Publishing Mode:",
+        "tg_mode_bot": "Bot Mode (Bot API)",
+        "tg_mode_user": "User Mode (User API)",
+        "tg_bot_token": "Bot Token:",
+        "tg_chat_id": "Chat ID (@channel or -100x):",
+        "tg_api_id": "API ID:",
+        "tg_api_hash": "API Hash:",
+        "tg_select_bank": "Select Question Bank:",
+        "tg_log": "Operation Log:",
+        "tg_start": "Start Publishing",
+        "tg_stop": "Stop",
+        "tg_save_creds": "Save Credentials",
+        "tg_msg_saved": "Credentials saved successfully.",
+        "tg_err_no_bank": "Please select a question bank.",
+        "tg_err_lib": "Telethon library missing. User mode disabled.",
+        "tg_processing": "Sending Question #{}...",
+        "tg_done": "Publishing finished.",
+        "tg_stopped": "Stopped by user.",
+        "tg_wait": "Waiting {} seconds..."
     }
 }
