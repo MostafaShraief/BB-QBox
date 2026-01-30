@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QFileDialog, QTabWidget, QWidget)
 from PyQt6.QtGui import QKeySequence
 from PyQt6.QtCore import Qt
-from utils import tr, ConfigManager
+from core.config import ConfigManager
+from ui.common import tr
 import os
 import shutil
 import json

@@ -9,7 +9,9 @@ from PyQt6.QtWidgets import (QMainWindow, QFileDialog, QMessageBox,
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtCore import Qt, QSize
 
-from utils import load_pdf_page, load_image_file, save_cropped_images_merged, analyze_pdf_layout, tr, ConfigManager
+from core.config import ConfigManager
+from core.pdf_ops import load_pdf_page, load_image_file, save_cropped_images_merged, analyze_pdf_layout
+from ui.common import tr
 from ui.canvas import EditorScene, ImageEditorView, CropItem
 
 class ImageCropperApp(QMainWindow):

@@ -10,7 +10,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QFont
 
-from utils import tr, ConfigManager
+from core.config import ConfigManager
+from ui.common import tr
 
 class OptionEditRow(QWidget):
     def __init__(self, prefix, text, is_correct, on_remove, on_set_correct, button_group):

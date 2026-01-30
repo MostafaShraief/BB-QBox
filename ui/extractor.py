@@ -6,7 +6,9 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QFileDialog, QMessageBox, QGroupBox, QRadioButton,
                              QDialog, QTextBrowser)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from utils import tr, ConfigManager
+from PyQt6.QtGui import QFont
+from core.config import ConfigManager
+from ui.common import tr
 
 class HelpDialog(QDialog):
     def __init__(self, parent=None):
@@ -252,14 +254,6 @@ class TextExtractorWindow(QMainWindow):
         self.menu = MainMenu(None)
         self.menu.show()
         self.close()
-# --- END OF FILE ui/extractor.py ---
-
-# --- START OF FILE ui/menu.py ---
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, 
-                             QSpacerItem, QSizePolicy, QHBoxLayout)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-from utils import tr, ConfigManager
 
 class MainMenu(QWidget):
     def __init__(self, app_instance):

@@ -37,11 +37,11 @@
     },
     "windows": {
         "menu": {
-            "w": 1536,
-            "h": 793,
-            "x": 0,
-            "y": -7,
-            "maximized": true
+            "w": 648,
+            "h": 606,
+            "x": 434,
+            "y": 76,
+            "maximized": false
         },
         "extractor": {
             "w": 650,

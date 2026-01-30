@@ -3,7 +3,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
                              QSpacerItem, QSizePolicy, QHBoxLayout)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
-from utils import tr, ConfigManager
+from core.config import ConfigManager
+from ui.common import tr
 
 class MainMenu(QWidget):
     def __init__(self, app_instance):
