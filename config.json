@@ -1,0 +1,68 @@
+{
+    "answer_keywords": [
+        "الحل",
+        "الجواب",
+        "الاجابة",
+        "answer"
+    ],
+    "note_keywords": [
+        "ملاحظة",
+        "توضيح",
+        "شرح",
+        "تنويه",
+        "note",
+        "hint"
+    ],
+    "stop_chars": [
+        ":",
+        "-",
+        "."
+    ],
+    "language": "ar",
+    "window_geometries": {},
+    "shortcuts": {
+        "save": "Ctrl+S",
+        "undo": "Ctrl+Z",
+        "redo": "Ctrl+Y",
+        "delete": "Del",
+        "renumber": "R",
+        "link": "L",
+        "unlink": "U",
+        "auto_page": "Ctrl+D",
+        "auto_bulk": "Ctrl+B",
+        "next": "Right",
+        "prev": "Left",
+        "detect_page": "Ctrl+D",
+        "detect_bulk": "Ctrl+B"
+    },
+    "windows": {
+        "menu": {
+            "w": 1536,
+            "h": 793,
+            "x": 0,
+            "y": -7,
+            "maximized": true
+        },
+        "extractor": {
+            "w": 650,
+            "h": 650,
+            "x": 443,
+            "y": 53,
+            "maximized": false
+        },
+        "viewer": {
+            "w": 1536,
+            "h": 793,
+            "x": 0,
+            "y": -7,
+            "maximized": true
+        },
+        "cropper": {
+            "w": 1536,
+            "h": 793,
+            "x": 0,
+            "y": -7,
+            "maximized": true
+        }
+    }
+}
