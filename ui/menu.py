@@ -1,8 +1,7 @@
-# --- START OF FILE ui/menu.py ---
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, 
-                             QSpacerItem, QSizePolicy, QHBoxLayout)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+                             QHBoxLayout, QFrame)
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QFont, QIcon
 from core.config import ConfigManager
 from ui.common import tr
 
@@ -11,7 +10,7 @@ class MainMenu(QWidget):
         super().__init__()
         self.app = app_instance
         self.setWindowTitle("BB-QBox")
-        self.resize(500, 500)
+        self.resize(500, 600)
         
         # RTL Check
         if ConfigManager.get_language() == "ar":
@@ -20,32 +19,108 @@ class MainMenu(QWidget):
             self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
             
         ConfigManager.load_window_state("menu", self)
+        self.apply_styles()
         self.init_ui()
 
     def closeEvent(self, event):
         ConfigManager.save_window_state("menu", self)
         super().closeEvent(event)
 
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2b2b2b;
+                color: #ffffff;
+                font-family: 'Segoe UI';
+                font-size: 16px; /* Unified large font */
+            }
+            QLabel#Title {
+                font-size: 28px;
+                font-weight: bold;
+                color: #4da3ff;
+                margin-bottom: 5px;
+            }
+            QLabel#Subtitle {
+                font-size: 14px;
+                color: #aaaaaa;
+                margin-bottom: 25px;
+            }
+            QPushButton.MenuBtn {
+                background-color: #383838;
+                border: 1px solid #505050;
+                border-radius: 10px;
+                color: #fff;
+                padding: 20px; /* Increased Padding */
+                text-align: left;
+                font-size: 18px; /* Larger Text */
+                font-weight: 600;
+                margin-bottom: 10px;
+            }
+            QPushButton.MenuBtn:hover {
+                background-color: #444444;
+                border-color: #4da3ff;
+            }
+            QPushButton.MenuBtn:pressed {
+                background-color: #1976D2;
+                border-color: #1976D2;
+            }
+            QPushButton#LangBtn {
+                background-color: transparent;
+                color: #888;
+                border: none;
+                font-size: 14px;
+            }
+            QPushButton#LangBtn:hover {
+                color: #fff;
+                text-decoration: underline;
+            }
+            QFrame#Divider {
+                background-color: #444;
+                max-height: 1px;
+                margin: 15px 0;
+            }
+            QLabel#Footer {
+                color: #666;
+                font-size: 12px;
+            }
+        """)
+
     def init_ui(self):
         if self.layout(): QWidget().setLayout(self.layout())
         
         layout = QVBoxLayout(self)
-        layout.setSpacing(15)
+        layout.setSpacing(10)
         layout.setContentsMargins(40, 40, 40, 40)
 
+        # --- Top Bar ---
         h_top = QHBoxLayout()
         h_top.addStretch()
         btn_lang = QPushButton(tr("lang_switch"))
-        btn_lang.setFlat(True)
+        btn_lang.setObjectName("LangBtn")
+        btn_lang.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_lang.clicked.connect(self.toggle_language)
         h_top.addWidget(btn_lang)
         layout.addLayout(h_top)
 
+        # --- Header ---
         title = QLabel(tr("app_title"))
+        title.setObjectName("Title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         layout.addWidget(title)
+        
+        subtitle = QLabel("Comprehensive Question Bank Management")
+        subtitle.setObjectName("Subtitle")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(subtitle)
 
+        # --- Divider ---
+        div = QFrame()
+        div.setObjectName("Divider")
+        layout.addWidget(div)
+
+        # --- Buttons ---
+        layout.addSpacing(15)
+        
         btn_cropper = self.create_btn(tr("menu_cropper"), "✂️")
         btn_extractor = self.create_btn(tr("menu_extractor"), "📝")
         btn_viewer = self.create_btn(tr("menu_viewer"), "👁️")
@@ -60,16 +135,17 @@ class MainMenu(QWidget):
         
         layout.addStretch()
         
+        # --- Footer ---
         footer = QLabel(tr("menu_footer"))
+        footer.setObjectName("Footer")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        footer.setStyleSheet("color: gray;")
         layout.addWidget(footer)
 
     def create_btn(self, text, icon):
-        btn = QPushButton(f"  {icon}  {text}")
-        btn.setFont(QFont("Segoe UI", 12))
-        btn.setMinimumHeight(60)
+        btn = QPushButton(f"  {icon}   {text}")
+        btn.setObjectName("MenuBtn")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setMinimumHeight(80) # Force tall buttons
         return btn
 
     def toggle_language(self):
@@ -101,4 +177,3 @@ class MainMenu(QWidget):
         self.viewer = QuestionViewer()
         self.viewer.show()
         self.close()
-# --- END OF FILE ui/menu.py ---
