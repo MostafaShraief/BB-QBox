@@ -12,7 +12,7 @@ CONFIG_PATH = "config.json"
 
 TRANS = {
     "ar": {
-        "app_title": "أدوات تحرير الأسئلة الذكية",
+        "app_title": "BB-QBox",
         "menu_cropper": "أداة قص الصور (PDF/صور)",
         "menu_extractor": "محول الأسئلة النصية (Txt)",
         "menu_viewer": "مستعرض بنك الأسئلة",
@@ -108,7 +108,7 @@ TRANS = {
         """
     },
     "en": {
-        "app_title": "Smart Question Tools",
+        "app_title": "BB-QBox",
         "menu_cropper": "Image Cropper (PDF/Img)",
         "menu_extractor": "Text Question Extractor (Txt)",
         "menu_viewer": "Question Bank Viewer",

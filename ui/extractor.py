@@ -265,7 +265,7 @@ class MainMenu(QWidget):
     def __init__(self, app_instance):
         super().__init__()
         self.app = app_instance
-        self.setWindowTitle("Smart Tools Suite")
+        self.setWindowTitle("BB-QBox")
         self.resize(500, 500)
         
         # RTL Check

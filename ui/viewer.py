@@ -1,402 +1,460 @@
-# --- START OF FILE ui/viewer.py ---
 import os
 import json
 import shutil
+import re
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QListWidget, QSplitter, 
                              QScrollArea, QRadioButton, QButtonGroup, QFrame,
                              QComboBox, QMessageBox, QCheckBox, QLineEdit,
-                             QTextEdit, QFileDialog, QToolButton)
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QPixmap, QFont, QKeyEvent, QAction
+                             QTextEdit, QFileDialog)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QFont
+
 from utils import tr, ConfigManager
+
+class OptionEditRow(QWidget):
+    def __init__(self, prefix, text, is_correct, on_remove, on_set_correct, button_group):
+        super().__init__()
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setSpacing(10)
+
+        self.btn_del = QPushButton("✕")
+        self.btn_del.setFixedSize(28, 28)
+        self.btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_del.setStyleSheet("""
+            QPushButton { background: #442222; border: 1px solid #663333; color: #ff5252; border-radius: 14px; }
+            QPushButton:hover { background: #ff5252; color: white; }
+        """)
+        self.btn_del.clicked.connect(on_remove)
+        layout.addWidget(self.btn_del)
+
+        self.lbl_prefix = QLabel(prefix)
+        self.lbl_prefix.setFixedWidth(35)
+        self.lbl_prefix.setStyleSheet("font-weight: bold; color: #00f2ff; font-size: 15px;")
+        layout.addWidget(self.lbl_prefix)
+
+        clean_text = re.sub(r'^[a-zA-Zأ-ي0-9]\s*[-.)]\s*', '', text).strip()
+        self.line_edit = QLineEdit(clean_text)
+        self.line_edit.setStyleSheet("background: #111; border: 1px solid #333; height: 35px; padding-left: 10px;")
+        layout.addWidget(self.line_edit)
+
+        self.radio = QRadioButton()
+        self.radio.setChecked(is_correct)
+        button_group.addButton(self.radio)
+        self.radio.toggled.connect(lambda checked: checked and on_set_correct())
+        layout.addWidget(self.radio)
 
 class QuestionViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(tr("menu_viewer"))
-        self.resize(1100, 750)
+        self.resize(1200, 850)
         
-        self.is_rtl = ConfigManager.get_language() == "ar"
-        if self.is_rtl: self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        else: self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-
+        if ConfigManager.get_language() == "ar":
+            self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        
         self.current_bank_data = []
         self.current_bank_path = ""
-        self.current_q_index = 0
+        self.current_q_index = -1
         self.edit_mode = False
+        self.temp_correct_idx = 0
+        self.option_rows = []
         
+        self.edit_mode_button_group = QButtonGroup(self)
+        self.edit_mode_button_group.setExclusive(True)
+
         ConfigManager.load_window_state("viewer", self)
+        self.apply_styles()
         self.init_ui()
         self.scan_banks_folder()
 
-    def closeEvent(self, event):
-        ConfigManager.save_window_state("viewer", self)
-        super().closeEvent(event)
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QMainWindow { background-color: #0c0c0c; }
+            QWidget { font-family: 'Segoe UI'; color: #e0e0e0; }
+            
+            /* Inputs & ComboBox Theme */
+            QLineEdit, QTextEdit, QComboBox { 
+                background-color: #111; border: 1px solid #333; color: white; padding: 5px; border-radius: 5px; 
+            }
+            QComboBox::drop-down { border: none; width: 30px; }
+            QComboBox::down-arrow { image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid #00f2ff; margin-right: 10px; }
+            QComboBox QAbstractItemView { background-color: #181818; selection-background-color: #00f2ff; selection-color: black; border: 1px solid #333; outline: none; }
+
+            /* Glowing Checkbox & Radio Theme */
+            QRadioButton::indicator, QCheckBox::indicator {
+                width: 20px; height: 20px; border-radius: 10px; border: 2px solid #555; background-color: #1a1a1a;
+            }
+            QCheckBox::indicator { border-radius: 4px; }
+            QRadioButton::indicator:checked, QCheckBox::indicator:checked {
+                background-color: #00f2ff; border: 2px solid #ffffff;
+            }
+
+            /* Sidebar Theme */
+            QListWidget { background-color: #111; border: none; border-right: 1px solid #222; outline: none; }
+            QListWidget::item { padding: 18px; border-bottom: 1px solid #1a1a1a; color: #aaa; font-size: 14px; }
+            QListWidget::item:selected { background-color: #181818; color: #00f2ff; border-left: 4px solid #00f2ff; font-weight: bold; }
+
+            #Card { background-color: #161616; border-radius: 12px; border: 1px solid #252525; padding: 20px; }
+            #AnsBox { background-color: #0f1a16; border: 1px solid #1a332a; border-radius: 8px; padding: 15px; }
+
+            QPushButton { background-color: #222; border: 1px solid #333; padding: 8px 15px; border-radius: 5px; font-weight: bold; }
+            QPushButton:hover { background-color: #2a2a2a; border-color: #00f2ff; }
+            
+            #PrimaryBtn { background-color: #005a9e; border: none; color: white; }
+            #PrimaryBtn:hover { background-color: #0078d4; }
+            #DeleteBtn { color: #ff5252; background: transparent; border: none; font-size: 18px; }
+            #DeleteBtn:hover { background: #331111; border-radius: 5px; }
+        """)
 
     def init_ui(self):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
 
-        # Top Bar
-        top_bar = QHBoxLayout()
-        top_bar.addWidget(QLabel(tr("view_sel_folder")))
+        # Header
+        header = QHBoxLayout()
+        header.setContentsMargins(5, 5, 5, 10)
+        lbl_bank = QLabel(tr("view_sel_folder"))
+        lbl_bank.setStyleSheet("color: #777; font-weight: bold;")
+        header.addWidget(lbl_bank)
+        
         self.combo_banks = QComboBox()
         self.combo_banks.setMinimumWidth(250)
         self.combo_banks.currentIndexChanged.connect(self.on_bank_selected)
-        top_bar.addWidget(self.combo_banks)
-
-        top_bar.addStretch()
+        header.addWidget(self.combo_banks)
+        header.addStretch()
+        
         self.chk_always_show = QCheckBox(tr("view_always_show"))
         self.chk_always_show.setChecked(True)
-        top_bar.addWidget(self.chk_always_show)
-        
-        btn_home = QPushButton(tr("home"))
-        btn_home.clicked.connect(self.go_home)
-        top_bar.addWidget(btn_home)
-        main_layout.addLayout(top_bar)
+        header.addWidget(self.chk_always_show)
 
-        # Splitter
+        btn_home = QPushButton("🏠 " + tr("home"))
+        btn_home.clicked.connect(self.go_home)
+        header.addWidget(btn_home)
+        main_layout.addLayout(header)
+
+        # Body
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Sidebar with fixed numbering
         self.list_widget = QListWidget()
         self.list_widget.currentRowChanged.connect(self.load_question)
-        self.list_widget.setMaximumWidth(220)
         splitter.addWidget(self.list_widget)
 
-        content_scroll = QScrollArea()
-        content_scroll.setWidgetResizable(True)
-        self.content_widget = QWidget()
-        self.content_layout = QVBoxLayout(self.content_widget)
-        content_scroll.setWidget(self.content_widget)
-        splitter.addWidget(content_scroll)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QWidget()
+        self.content_layout = QVBoxLayout(container)
+        self.content_layout.setContentsMargins(20, 10, 20, 20)
+
+        # Question Card
+        self.card = QFrame()
+        self.card.setObjectName("Card")
+        card_v = QVBoxLayout(self.card)
+
+        head = QHBoxLayout()
+        self.lbl_q_num = QLabel()
+        self.lbl_q_num.setStyleSheet("font-size: 20px; font-weight: bold; color: #00f2ff;")
+        head.addWidget(self.lbl_q_num)
+        head.addStretch()
+        self.btn_edit = QPushButton("✏️ " + tr("edit_btn"))
+        self.btn_edit.clicked.connect(self.toggle_edit_mode)
+        head.addWidget(self.btn_edit)
+        self.btn_delete = QPushButton("🗑️")
+        self.btn_delete.setObjectName("DeleteBtn")
+        self.btn_delete.clicked.connect(self.delete_current_question)
+        head.addWidget(self.btn_delete)
+        card_v.addLayout(head)
+
+        self.img_label = QLabel()
+        self.img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.img_label.setStyleSheet("background: #080808; border-radius: 6px; padding: 10px; min-height: 100px;")
+        card_v.addWidget(self.img_label)
+
+        self.img_tools = QWidget()
+        it_lay = QHBoxLayout(self.img_tools)
+        it_lay.setContentsMargins(0,5,0,5)
+        self.btn_rep_img = QPushButton() # Text set dynamically in load_question
+        self.btn_rep_img.clicked.connect(self.replace_image)
+        self.btn_crop_img = QPushButton("✂️ " + tr("crop_img"))
+        self.btn_crop_img.clicked.connect(self.open_cropper_for_image)
+        it_lay.addWidget(self.btn_rep_img)
+        it_lay.addWidget(self.btn_crop_img)
+        it_lay.addStretch()
+        self.img_tools.hide()
+        card_v.addWidget(self.img_tools)
+
+        self.q_text_lbl = QLabel()
+        self.q_text_lbl.setWordWrap(True)
+        self.q_text_lbl.setFont(QFont("Segoe UI", 13))
+        self.q_text_edit = QTextEdit()
+        self.q_text_edit.setMinimumHeight(120)
+        self.q_text_edit.hide()
+        card_v.addWidget(self.q_text_lbl)
+        card_v.addWidget(self.q_text_edit)
+
+        # Viewer Options
+        self.opt_group_view = QButtonGroup(self)
+        self.opt_group_view.buttonClicked.connect(self.on_option_clicked)
+        self.opt_view_layout = QVBoxLayout()
+        card_v.addLayout(self.opt_view_layout)
+
+        # Editor Options
+        self.edit_opt_container = QWidget()
+        self.edit_opt_layout = QVBoxLayout(self.edit_opt_container)
+        self.edit_opt_layout.setContentsMargins(0,0,0,0)
+        self.edit_opt_container.hide()
+        card_v.addWidget(self.edit_opt_container)
+        
+        self.btn_add_opt = QPushButton("➕ Add New Option")
+        self.btn_add_opt.setStyleSheet("color: #00f2ff; border: 1px dashed #00f2ff; margin-top: 10px; height: 38px;")
+        self.btn_add_opt.clicked.connect(lambda: self.add_option_row("", False))
+        self.btn_add_opt.hide()
+        card_v.addWidget(self.btn_add_opt)
+
+        self.content_layout.addWidget(self.card)
+
+        # Answer Box
+        self.ans_box = QFrame()
+        self.ans_box.setObjectName("AnsBox")
+        ans_v = QVBoxLayout(self.ans_box)
+        self.lbl_ans_status = QLabel()
+        self.lbl_ans_status.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        self.lbl_expl = QLabel()
+        self.lbl_expl.setWordWrap(True)
+        self.lbl_expl.setStyleSheet("line-height: 1.4;")
+        self.edit_expl = QTextEdit()
+        self.edit_expl.hide()
+        ans_v.addWidget(self.lbl_ans_status)
+        ans_v.addWidget(self.lbl_expl)
+        ans_v.addWidget(self.edit_expl)
+        self.ans_box.hide()
+        self.content_layout.addWidget(self.ans_box)
+
+        # Action Buttons
+        self.btn_reveal = QPushButton("👁️ " + tr("view_show_ans"))
+        self.btn_reveal.setObjectName("PrimaryBtn")
+        self.btn_reveal.setMinimumHeight(50)
+        self.btn_reveal.clicked.connect(self.reveal_answer)
+        self.content_layout.addWidget(self.btn_reveal)
+
+        self.btn_save = QPushButton("💾 " + tr("save_changes"))
+        self.btn_save.setObjectName("PrimaryBtn")
+        self.btn_save.setMinimumHeight(50)
+        self.btn_save.hide()
+        self.btn_save.clicked.connect(self.save_changes)
+        self.content_layout.addWidget(self.btn_save)
+
+        self.content_layout.addStretch()
+        scroll.setWidget(container)
+        splitter.addWidget(scroll)
         splitter.setStretchFactor(1, 4)
         main_layout.addWidget(splitter)
 
-        # --- Content Area ---
-        
-        # Tools Layout (Edit/Delete/Image)
-        tools_layout = QHBoxLayout()
-        self.btn_edit = QPushButton(tr("edit_mode"))
-        self.btn_edit.clicked.connect(self.toggle_edit_mode)
-        tools_layout.addWidget(self.btn_edit)
-        
-        self.btn_delete = QPushButton(tr("delete_q"))
-        self.btn_delete.setStyleSheet("color: #FF5252;")
-        self.btn_delete.clicked.connect(self.delete_current_question)
-        tools_layout.addWidget(self.btn_delete)
-        
-        self.btn_replace_img = QPushButton(tr("replace_img"))
-        self.btn_replace_img.clicked.connect(self.replace_image)
-        self.btn_replace_img.hide()
-        tools_layout.addWidget(self.btn_replace_img)
-        
-        self.btn_crop_img = QPushButton(tr("crop_img"))
-        self.btn_crop_img.clicked.connect(self.open_cropper_for_image)
-        self.btn_crop_img.hide()
-        tools_layout.addWidget(self.btn_crop_img)
-        
-        tools_layout.addStretch()
-        self.content_layout.addLayout(tools_layout)
-
-        # Image
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet("border: 1px dashed #ccc; padding: 10px; background: #f9f9f9;")
-        self.content_layout.addWidget(self.image_label)
-        
-        # Question Text
-        self.q_text_label = QLabel()
-        self.q_text_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        self.q_text_label.setWordWrap(True)
-        self.q_text_edit = QTextEdit() # For editing
-        self.q_text_edit.hide()
-        self.content_layout.addWidget(self.q_text_label)
-        self.content_layout.addWidget(self.q_text_edit)
-        
-        # Options
-        self.opts_container = QWidget()
-        self.opts_layout = QVBoxLayout(self.opts_container)
-        self.content_layout.addWidget(self.opts_container)
-        
-        # Edit Options Area (Hidden by default)
-        self.edit_opts_container = QWidget()
-        self.edit_opts_layout = QVBoxLayout(self.edit_opts_container)
-        self.edit_opts_container.hide()
-        self.content_layout.addWidget(self.edit_opts_container)
-
-        self.btn_show_ans = QPushButton(tr("view_show_ans"))
-        self.btn_show_ans.clicked.connect(self.toggle_answer)
-        self.content_layout.addWidget(self.btn_show_ans)
-        
-        # Answer/Explanation Box
-        self.ans_frame = QFrame()
-        self.ans_frame.setStyleSheet("background-color: #333; color: #fff; border-radius: 8px; padding: 15px;")
-        v_ans = QVBoxLayout(self.ans_frame)
-        self.lbl_result = QLabel()
-        self.lbl_result.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        self.lbl_explanation = QLabel()
-        self.lbl_explanation.setWordWrap(True)
-        
-        # Edit Fields for Answer
-        self.edit_ans_idx = QLineEdit()
-        self.edit_ans_idx.setPlaceholderText("Correct Option Index (0=A, 1=B...)")
-        self.edit_expl = QTextEdit()
-        self.edit_expl.setPlaceholderText("Explanation...")
-        self.edit_ans_idx.hide()
-        self.edit_expl.hide()
-
-        v_ans.addWidget(self.lbl_result)
-        v_ans.addWidget(self.lbl_explanation)
-        v_ans.addWidget(self.edit_ans_idx)
-        v_ans.addWidget(self.edit_expl)
-        
-        self.ans_frame.hide()
-        self.content_layout.addWidget(self.ans_frame)
-        
-        # Save/Cancel Edit Buttons
-        h_edit_btns = QHBoxLayout()
-        self.btn_save_edit = QPushButton(tr("save_changes"))
-        self.btn_save_edit.setStyleSheet("background: #4CAF50; color: white;")
-        self.btn_save_edit.clicked.connect(self.save_edits)
-        self.btn_cancel_edit = QPushButton(tr("cancel_edit"))
-        self.btn_cancel_edit.clicked.connect(self.toggle_edit_mode)
-        
-        self.btn_save_edit.hide()
-        self.btn_cancel_edit.hide()
-        
-        h_edit_btns.addWidget(self.btn_save_edit)
-        h_edit_btns.addWidget(self.btn_cancel_edit)
-        self.content_layout.addLayout(h_edit_btns)
-
-    # --- Loading Logic ---
+    # --- Scanning & Display ---
     def scan_banks_folder(self):
         self.combo_banks.clear()
-        base = "banks"
-        if not os.path.exists(base): os.makedirs(base)
-        subs = sorted([d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))])
-        if subs: self.combo_banks.addItems(subs)
-        else: self.combo_banks.addItem("No Banks Found")
+        if not os.path.exists("banks"): os.makedirs("banks")
+        dirs = sorted([d for d in os.listdir("banks") if os.path.isdir(os.path.join("banks", d))])
+        if dirs: self.combo_banks.addItems(dirs)
 
     def on_bank_selected(self):
         name = self.combo_banks.currentText()
-        path = os.path.join("banks", name, "bank.json")
-        self.current_bank_path = os.path.dirname(path)
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
+        self.current_bank_path = os.path.join("banks", name)
+        p = os.path.join(self.current_bank_path, "bank.json")
+        if os.path.exists(p):
+            with open(p, 'r', encoding='utf-8') as f:
                 self.current_bank_data = json.load(f)
             self.refresh_list()
-        else:
-            self.list_widget.clear()
-            self.current_bank_data = []
 
     def refresh_list(self):
         self.list_widget.clear()
         for i, q in enumerate(self.current_bank_data):
-            self.list_widget.addItem(f"{i+1}. {q.get('question','?')[:30]}...")
-        if self.current_bank_data:
-            self.list_widget.setCurrentRow(0)
+            raw_txt = q.get('question','?')
+            # Distinct Sidebar numbering: Strip internal question numbers to avoid "9. 10."
+            clean_txt = re.sub(r'^\d+\s*[-.)]\s*', '', raw_txt).strip()
+            preview = clean_txt[:35].replace('\n', ' ')
+            # Cleaner Sidebar UI format
+            self.list_widget.addItem(f"Q{i+1:02} | {preview}...")
+        if self.current_bank_data: self.list_widget.setCurrentRow(0)
 
     def load_question(self, index):
         if index < 0 or index >= len(self.current_bank_data): return
         self.current_q_index = index
-        self.edit_mode = False 
-        self.update_ui_mode()
+        self.edit_mode = False
+        self.update_ui_state()
         
         q = self.current_bank_data[index]
+        self.lbl_q_num.setText(f"Question #{index+1}")
         
-        # Image
         img_p = os.path.join(self.current_bank_path, "images", f"{index+1}.jpg")
         if os.path.exists(img_p):
             pix = QPixmap(img_p)
-            if pix.height() > 400: pix = pix.scaledToHeight(400, Qt.TransformationMode.SmoothTransformation)
-            self.image_label.setPixmap(pix)
-            self.image_label.show()
+            if pix.width() > 850: pix = pix.scaledToWidth(850, Qt.TransformationMode.SmoothTransformation)
+            self.img_label.setPixmap(pix)
+            self.img_label.show()
+            self.btn_rep_img.setText("🔄 " + tr("replace_img"))
         else:
-            self.image_label.hide()
+            self.img_label.clear()
+            self.img_label.hide()
+            self.btn_rep_img.setText("➕ Add Image")
         
-        self.q_text_label.setText(tr("view_lbl_q").format(index+1) + "\n" + q.get("question", ""))
+        self.q_text_lbl.setText(q.get("question", ""))
         
-        # Display Options
-        for i in reversed(range(self.opts_layout.count())): 
-            self.opts_layout.itemAt(i).widget().setParent(None)
+        for b in self.opt_group_view.buttons():
+            self.opt_view_layout.removeWidget(b); b.deleteLater()
         
-        self.btn_group = QButtonGroup(self)
-        self.btn_group.buttonClicked.connect(self.check_answer)
         for i, opt in enumerate(q.get("options", [])):
             rb = QRadioButton(opt)
             rb.setProperty("idx", i)
-            rb.setFont(QFont("Segoe UI", 12))
-            self.opts_layout.addWidget(rb)
-            self.btn_group.addButton(rb)
-            
-        self.ans_frame.hide()
-        self.lbl_result.setText("")
-        
-        # Explanation setup
-        expl = q.get("explanation", "")
-        self.lbl_explanation.setText(expl)
-        
-        if self.chk_always_show.isChecked(): self.reveal_details()
+            self.opt_view_layout.addWidget(rb)
+            self.opt_group_view.addButton(rb)
 
-    # --- Interaction ---
-    def check_answer(self, btn):
-        q = self.current_bank_data[self.current_q_index]
-        correct = q.get("correct_options", [0])[0]
-        if btn.property("idx") == correct:
-            self.lbl_result.setText("✅ " + tr("view_correct"))
-            self.lbl_result.setStyleSheet("color: #4CAF50;")
-            self.reveal_details()
-        else:
-            self.lbl_result.setText("❌ " + tr("view_wrong"))
-            self.lbl_result.setStyleSheet("color: #FF5252;")
-            self.ans_frame.show()
-
-    def toggle_answer(self):
-        if self.ans_frame.isVisible(): self.ans_frame.hide()
-        else: self.reveal_details()
-
-    def reveal_details(self):
-        self.ans_frame.show()
-        q = self.current_bank_data[self.current_q_index]
-        correct = q.get("correct_options", [0])[0]
-        opts = q.get("options", [])
-        
-        for btn in self.btn_group.buttons():
-            if btn.property("idx") == correct:
-                btn.setStyleSheet("color: #2196F3; font-weight: bold;")
-        
-        txt = ""
-        if correct < len(opts):
-            txt += f"<b>{tr('view_ans_header')}</b> {opts[correct]}<br><br>"
-        if q.get("explanation"):
-            txt += f"<b>📝 {tr('view_note_header')}</b><br>{q['explanation']}"
-        self.lbl_explanation.setText(txt)
+        self.ans_box.hide()
+        if self.chk_always_show.isChecked(): self.reveal_answer()
 
     # --- Editing Logic ---
     def toggle_edit_mode(self):
         self.edit_mode = not self.edit_mode
-        self.update_ui_mode()
-        
         if self.edit_mode:
-            # Populate fields
             q = self.current_bank_data[self.current_q_index]
             self.q_text_edit.setText(q.get("question", ""))
-            
-            # Populate Options Editor
-            for i in reversed(range(self.edit_opts_layout.count())):
-                 self.edit_opts_layout.itemAt(i).widget().setParent(None)
-            self.opt_edits = []
-            for opt in q.get("options", []):
-                le = QLineEdit(opt)
-                self.edit_opts_layout.addWidget(le)
-                self.opt_edits.append(le)
-            
-            correct = q.get("correct_options", [0])[0]
-            self.edit_ans_idx.setText(str(correct))
+            self.temp_correct_idx = q.get("correct_options", [0])[0]
             self.edit_expl.setText(q.get("explanation", ""))
-            self.ans_frame.show() # Show frame to edit expl
+            
+            while self.edit_opt_layout.count():
+                it = self.edit_opt_layout.takeAt(0); it.widget().deleteLater()
+            
+            for btn in self.edit_mode_button_group.buttons():
+                self.edit_mode_button_group.removeButton(btn)
+            
+            self.option_rows = []
+            for i, opt in enumerate(q.get("options", [])):
+                self.add_option_row(opt, i == self.temp_correct_idx)
+            self.ans_box.show()
+        
+        self.update_ui_state()
 
-    def update_ui_mode(self):
-        vis = self.edit_mode
-        # Visibility Swaps
-        self.q_text_label.setVisible(not vis)
-        self.q_text_edit.setVisible(vis)
-        self.opts_container.setVisible(not vis)
-        self.edit_opts_container.setVisible(vis)
+    def add_option_row(self, text, is_correct):
+        row_idx = len(self.option_rows)
+        prefix = self.generate_prefix(row_idx)
         
-        self.lbl_result.setVisible(not vis)
-        self.lbl_explanation.setVisible(not vis)
-        self.edit_ans_idx.setVisible(vis)
-        self.edit_expl.setVisible(vis)
-        
-        self.btn_save_edit.setVisible(vis)
-        self.btn_cancel_edit.setVisible(vis)
-        self.btn_replace_img.setVisible(vis)
-        self.btn_crop_img.setVisible(vis)
-        
-        self.btn_edit.setVisible(not vis)
-        self.btn_delete.setVisible(not vis)
-        self.btn_show_ans.setVisible(not vis)
+        def on_remove():
+            self.edit_mode_button_group.removeButton(row.radio)
+            self.option_rows.remove(row); row.deleteLater()
+            self.reorder_prefixes()
 
-    def save_edits(self):
+        def on_set():
+            if row in self.option_rows: self.temp_correct_idx = self.option_rows.index(row)
+
+        row = OptionEditRow(prefix, text, is_correct, on_remove, on_set, self.edit_mode_button_group)
+        self.edit_opt_layout.addWidget(row)
+        self.option_rows.append(row)
+        self.reorder_prefixes()
+
+    def generate_prefix(self, index):
+        lang_ref = self.option_rows[0].line_edit.text() if self.option_rows else ""
+        is_arabic = any("\u0600" <= c <= "\u06FF" for c in lang_ref)
+        if is_arabic:
+            chars = "أبجدهوزحطيكلمنسعفصقرشتثخذضظغ"
+            char = chars[index] if index < len(chars) else "?"
+        else:
+            char = chr(ord('a') + index) if index < 26 else "?"
+        return f"{char})"
+
+    def reorder_prefixes(self):
+        for i, row in enumerate(self.option_rows): row.lbl_prefix.setText(self.generate_prefix(i))
+
+    def save_changes(self):
         q = self.current_bank_data[self.current_q_index]
         q['question'] = self.q_text_edit.toPlainText()
-        q['options'] = [le.text() for le in self.opt_edits]
-        try:
-            q['correct_options'] = [int(self.edit_ans_idx.text())]
-        except: pass
         q['explanation'] = self.edit_expl.toPlainText()
         
-        self._save_json_to_disk()
-        self.toggle_edit_mode() # Exit edit
-        self.load_question(self.current_q_index) # Refresh
-
-    def _save_json_to_disk(self):
-        path = os.path.join(self.current_bank_path, "bank.json")
-        with open(path, 'w', encoding='utf-8') as f:
+        final_opts = []
+        for i, row in enumerate(self.option_rows):
+            final_opts.append(f"{self.generate_prefix(i)} {row.line_edit.text().strip()}")
+            if row.radio.isChecked(): self.temp_correct_idx = i
+        
+        q['options'] = final_opts
+        q['correct_options'] = [self.temp_correct_idx]
+        
+        with open(os.path.join(self.current_bank_path, "bank.json"), 'w', encoding='utf-8') as f:
             json.dump(self.current_bank_data, f, indent=2, ensure_ascii=False)
-
-    def delete_current_question(self):
-        if QMessageBox.question(self, tr("delete"), tr("confirm_delete")) != QMessageBox.StandardButton.Yes:
-            return
-        
-        idx = self.current_q_index
-        # 1. Remove from Data
-        self.current_bank_data.pop(idx)
-        self._save_json_to_disk()
-        
-        # 2. Handle Image Deletion and Renaming
-        img_dir = os.path.join(self.current_bank_path, "images")
-        deleted_img = os.path.join(img_dir, f"{idx+1}.jpg")
-        if os.path.exists(deleted_img): os.remove(deleted_img)
-        
-        # Shift subsequent images down (6.jpg -> 5.jpg)
-        # We start from idx+2 (old next question) which becomes idx+1
-        # Loop until we find no more images
-        curr = idx + 2
-        while True:
-            old_p = os.path.join(img_dir, f"{curr}.jpg")
-            if not os.path.exists(old_p): break
-            new_p = os.path.join(img_dir, f"{curr-1}.jpg")
-            shutil.move(old_p, new_p)
-            curr += 1
             
-        self.refresh_list()
-        new_sel = min(idx, len(self.current_bank_data)-1)
-        if new_sel >= 0: self.list_widget.setCurrentRow(new_sel)
+        self.toggle_edit_mode(); self.load_question(self.current_q_index); self.refresh_list()
 
+    # --- UI Helpers ---
+    def update_ui_state(self):
+        v = self.edit_mode
+        self.q_text_lbl.setVisible(not v); self.q_text_edit.setVisible(v)
+        self.edit_opt_container.setVisible(v); self.btn_add_opt.setVisible(v); self.img_tools.setVisible(v)
+        for b in self.opt_group_view.buttons(): b.setVisible(not v)
+        self.lbl_ans_status.setVisible(not v); self.lbl_expl.setVisible(not v); self.edit_expl.setVisible(v)
+        self.btn_reveal.setVisible(not v); self.btn_save.setVisible(v)
+        self.btn_edit.setText("✔️ " + tr("cancel") if v else "✏️ " + tr("edit_btn"))
+
+    def reveal_answer(self):
+        q = self.current_bank_data[self.current_q_index]
+        correct = q.get("correct_options", [0])[0]
+        for b in self.opt_group_view.buttons():
+            if b.property("idx") == correct: b.setStyleSheet("color: #00f2ff; font-weight: bold;")
+            else: b.setStyleSheet("")
+        self.lbl_expl.setText(f"<b>{tr('view_ans_header')}</b> Option {correct+1}<br><br>{q.get('explanation','')}")
+        self.ans_box.show()
+
+    def on_option_clicked(self, btn):
+        if self.edit_mode: return
+        correct = self.current_bank_data[self.current_q_index].get("correct_options", [0])[0]
+        if btn.property("idx") == correct:
+            self.lbl_ans_status.setText("✅ " + tr("view_correct")); self.lbl_ans_status.setStyleSheet("color: #4CAF50;")
+            self.reveal_answer()
+        else:
+            self.lbl_ans_status.setText("❌ " + tr("view_wrong")); self.lbl_ans_status.setStyleSheet("color: #ff5252;")
+            self.ans_box.show()
+
+    # --- External Image Handling ---
     def replace_image(self):
         f, _ = QFileDialog.getOpenFileName(self, tr("replace_img"), "", "Images (*.jpg *.png)")
         if f:
             dest = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}.jpg")
             if not os.path.exists(os.path.dirname(dest)): os.makedirs(os.path.dirname(dest))
-            # Convert to jpg standard
-            try:
-                from PIL import Image
-                img = Image.open(f).convert("RGB")
-                img.save(dest, "JPEG")
-                self.load_question(self.current_q_index) # Refresh image view
-            except Exception as e:
-                QMessageBox.critical(self, "Error", str(e))
+            shutil.copy(f, dest); self.load_question(self.current_q_index)
 
     def open_cropper_for_image(self):
-        img_path = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}.jpg")
-        if not os.path.exists(img_path):
-            QMessageBox.warning(self, "Error", "No image exists for this question.")
-            return
-        
         from ui.window import ImageCropperApp
-        # Pass single_image_mode=True
-        self.cropper = ImageCropperApp(single_image_mode=True)
-        self.cropper.load_single_image(img_path)
-        # When cropper closes, refresh
-        self.cropper.destroyed.connect(lambda: self.load_question(self.current_q_index))
-        self.cropper.show()
+        img_p = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}.jpg")
+        if not os.path.exists(img_p):
+            # If no image exists, we can't crop. We could show a message or do nothing.
+            return
+        self.cropper_ref = ImageCropperApp(single_image_mode=True)
+        self.cropper_ref.load_single_image(img_p)
+        self.cropper_ref.show()
+
+    def delete_current_question(self):
+        if QMessageBox.question(self, tr("delete"), tr("confirm_delete")) != QMessageBox.StandardButton.Yes: return
+        idx = self.current_q_index
+        self.current_bank_data.pop(idx)
+        img_dir = os.path.join(self.current_bank_path, "images")
+        t_img = os.path.join(img_dir, f"{idx+1}.jpg")
+        if os.path.exists(t_img): os.remove(t_img)
+        curr = idx + 2
+        while True:
+            old = os.path.join(img_dir, f"{curr}.jpg")
+            if not os.path.exists(old): break
+            shutil.move(old, os.path.join(img_dir, f"{curr-1}.jpg")); curr += 1
+        with open(os.path.join(self.current_bank_path, "bank.json"), 'w', encoding='utf-8') as f:
+            json.dump(self.current_bank_data, f, indent=2, ensure_ascii=False)
+        self.refresh_list(); self.load_question(min(idx, len(self.current_bank_data)-1))
 
     def go_home(self):
         from ui.menu import MainMenu
-        self.menu = MainMenu(None)
-        self.menu.show()
-        self.close()
-# --- END OF FILE ui/viewer.py ---
+        self.menu = MainMenu(None); self.menu.show(); self.close()
+
+    def keyPressEvent(self, e):
+        if self.edit_mode: return super().keyPressEvent(e)
+        if e.key() == Qt.Key.Key_Space: self.reveal_answer()
+        elif e.key() == Qt.Key.Key_Left: self.list_widget.setCurrentRow(max(0, self.current_q_index-1))
+        elif e.key() == Qt.Key.Key_Right: self.list_widget.setCurrentRow(min(len(self.current_bank_data)-1, self.current_q_index+1))
+        super().keyPressEvent(e)
