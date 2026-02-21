@@ -1,5 +1,6 @@
 # --- START OF FILE ui/window.py ---
 import os
+import logging
 import fitz
 import copy
 from PyQt6.QtWidgets import (QMainWindow, QFileDialog, QMessageBox, 
@@ -7,7 +8,7 @@ from PyQt6.QtWidgets import (QMainWindow, QFileDialog, QMessageBox,
                              QStatusBar, QInputDialog, QProgressDialog, QApplication,
                              QMenu, QPushButton)
 from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QUrl
 
 from core.config import ConfigManager
 from core.pdf_ops import load_pdf_page, load_image_file, save_cropped_images_merged, analyze_pdf_layout
@@ -40,6 +41,21 @@ class ImageCropperApp(QMainWindow):
     def closeEvent(self, event):
         ConfigManager.save_window_state("cropper", self)
         super().closeEvent(event)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            supported = ('.pdf', '.png', '.jpg', '.jpeg')
+            if any(url.toLocalFile().lower().endswith(supported) for url in event.mimeData().urls()):
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+    def dropEvent(self, event):
+        paths = [url.toLocalFile() for url in event.mimeData().urls()
+                 if url.toLocalFile().lower().endswith(('.pdf', '.png', '.jpg', '.jpeg'))]
+        if paths:
+            self.load_files(paths)
+            event.acceptProposedAction()
 
     def init_ui(self):
         central_widget = QWidget()
@@ -235,7 +251,8 @@ class ImageCropperApp(QMainWindow):
                 r = analyze_pdf_layout(f[1], f[2])
                 self.pages_crops[self.current_index] = [{'rect':x, 'id':None, 'order':None, 'is_note': False} for x in r]
                 self.draw_overlays_only()
-            except: pass
+            except Exception as e:
+                logging.warning("Auto-detect failed: %s", e)
 
     def auto_detect_batch(self):
         if not self.file_list: return
@@ -256,7 +273,8 @@ class ImageCropperApp(QMainWindow):
                         self.pages_crops[i] = [{'rect':x, 'id':None, 'order':None, 'is_note': False} for x in r]
                     cnt += 1; pd.setValue(cnt); QApplication.processEvents()
                 if (s-1) <= self.current_index < e: self.draw_overlays_only()
-            except: pass
+            except Exception as e:
+                logging.warning("Auto-detect batch failed: %s", e)
 
     def navigate(self, d):
         n = self.current_index + d
@@ -323,6 +341,8 @@ class ImageCropperApp(QMainWindow):
     
     def push_undo(self):
         self.undo_stack.append(copy.deepcopy(self.pages_crops))
+        if len(self.undo_stack) > 50:
+            self.undo_stack.pop(0)
         self.redo_stack.clear()
         self.update_undo_redo_buttons()
     def undo(self):

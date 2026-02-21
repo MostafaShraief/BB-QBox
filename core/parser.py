@@ -2,15 +2,16 @@
 import re
 import json
 import os
+from typing import Any, Dict, List, Optional, Tuple
 
 class QuestionParser:
-    def __init__(self, config_path="config.json"):
+    def __init__(self, config_path: str = "config.json") -> None:
         self.config = self._load_config(config_path)
         self.re_num = re.compile(r'^(\d+)\s*[-.)]') 
         self.re_opt = re.compile(r'^([a-zA-Zأ-ي])\s*[-.)]') 
 
-    def _load_config(self, path):
-        defaults = {
+    def _load_config(self, path: str) -> Dict[str, Any]:
+        defaults: Dict[str, Any] = {
             "answer_keywords": ["الحل", "الجواب", "الاجابة", "answer"],
             "note_keywords": ["ملاحظة", "توضيح", "شرح", "تنويه", "note", "hint"],
             "language": "ar"
@@ -20,14 +21,16 @@ class QuestionParser:
                 return {**defaults, **json.load(f)}
         return defaults
 
-    def _map_char_to_index(self, char):
+    def _map_char_to_index(self, char: str) -> int:
         char = char.lower()
         if 'a' <= char <= 'z': return ord(char) - ord('a')
         arabic_chars = "أبجدهوزحطيكلمنسعفصقرشتثخذضظغ"
         if char in arabic_chars: return arabic_chars.index(char)
         return 0 
 
-    def parse_text(self, file_path, split_lectures=False, inline_note=False, multiline_note=False):
+    def parse_text(self, file_path: str, split_lectures: bool = False, inline_note: bool = False, multiline_note: bool = False) -> List[Tuple[str, List[Dict[str, Any]]]]:
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
         with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
@@ -76,7 +79,7 @@ class QuestionParser:
                 found_ans = False
                 for kw in self.config['answer_keywords']:
                     if kw in line:
-                        match = re.search(f"{kw}[:.\s-]*([a-zA-Zأ-ي0-9])", line)
+                        match = re.search(re.escape(kw) + r'[:.\s-]*([a-zA-Zأ-ي0-9])', line)
                         if match:
                             ans_char = match.group(1)
                             current_q['correct_options'] = [self._map_char_to_index(ans_char)]
@@ -135,7 +138,7 @@ class QuestionParser:
 
         return banks
 
-    def _extract_explanation_standard(self, text, q_obj):
+    def _extract_explanation_standard(self, text: str, q_obj: Dict[str, Any]) -> None:
         """Helper to find notes inside the answer line based on keywords only."""
         for kw in self.config['note_keywords']:
             if kw in text:
@@ -145,7 +148,7 @@ class QuestionParser:
                 q_obj['explanation'] += note
                 return
 
-    def save_banks(self, banks_data, base_folder, create_img_folder=True):
+    def save_banks(self, banks_data: List[Tuple[str, List[Dict[str, Any]]]], base_folder: str, create_img_folder: bool = True) -> List[str]:
         results = []
         for suffix, data in banks_data:
             target_folder_name = base_folder + suffix

@@ -1,0 +1,21 @@
+{
+    "answer_keywords": ["الحل", "الجواب", "الاجابة", "answer"],
+    "note_keywords": ["ملاحظة", "توضيح", "شرح", "تنويه", "note", "hint"],
+    "stop_chars": [":", "-", "."],
+    "language": "ar",
+    "shortcuts": {
+        "save": "Ctrl+S",
+        "undo": "Ctrl+Z",
+        "redo": "Ctrl+Y",
+        "delete": "Del",
+        "renumber": "R",
+        "link": "L",
+        "unlink": "U",
+        "mark_note": "Ctrl+M",
+        "detect_page": "Ctrl+D",
+        "detect_bulk": "Ctrl+B",
+        "prev": "Left",
+        "next": "Right"
+    },
+    "tg_title_msg": "#المحاضرة_"
+}

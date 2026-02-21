@@ -32,7 +32,7 @@ def ensure_config():
         try:
             with open("config.json", 'r', encoding='utf-8') as f:
                 current = json.load(f)
-        except:
+        except Exception:
             current = {}
             
     # Recursive merge to ensure nested keys (like 'shortcuts') exist
