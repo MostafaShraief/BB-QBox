@@ -19,7 +19,7 @@
         "-",
         "."
     ],
-    "language": "ar",
+    "language": "en",
     "window_geometries": {},
     "shortcuts": {
         "save": "Ctrl+S",
@@ -34,7 +34,8 @@
         "next": "Right",
         "prev": "Left",
         "detect_page": "Ctrl+D",
-        "detect_bulk": "Ctrl+B"
+        "detect_bulk": "Ctrl+B",
+        "mark_note": "Ctrl+M"
     },
     "windows": {
         "menu": {
@@ -72,11 +73,5 @@
             "y": -7,
             "maximized": true
         }
-    },
-    "telegram": {
-        "bot_token": "8515343606:AAG_HzrLVfWQLNUonHm6pZmnU3uaBFtG08M",
-        "chat_id": "-1003770809168",
-        "api_id": "",
-        "api_hash": ""
     }
 }

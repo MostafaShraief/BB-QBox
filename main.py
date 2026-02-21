@@ -19,6 +19,7 @@ def ensure_config():
             "renumber": "R",
             "link": "L",
             "unlink": "U",
+            "mark_note": "Ctrl+M",
             "detect_page": "Ctrl+D",
             "detect_bulk": "Ctrl+B",
             "prev": "Left",

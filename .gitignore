@@ -1,3 +1,7 @@
 /banks
 __pycache__
 config.json
+secrets.json
+__pycache__/
+*.pyc
+banks/

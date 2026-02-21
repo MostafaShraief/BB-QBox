@@ -1,3 +1,4 @@
+# --- START OF FILE core/locales.py ---
 TRANS = {
     "ar": {
         "app_title": "BB-QBox",
@@ -16,6 +17,7 @@ TRANS = {
         "renumber": "إعادة ترقيم",
         "link_crops": "ربط بسؤال (رئيسي/فرعي)",
         "unlink_crops": "فك الارتباط",
+        "mark_note": "تحديد كملاحظة (شرح)",
         "auto_page": "كشف تلقائي (صفحة)",
         "auto_bulk": "كشف جماعي (نطاق)",
         "prev": "السابق",
@@ -134,6 +136,7 @@ TRANS = {
         "renumber": "Renumber",
         "link_crops": "Link Crop (Global ID)",
         "unlink_crops": "Unlink (Make Independent)",
+        "mark_note": "Mark as Note (Explanation)",
         "auto_page": "Auto Detect (Page)",
         "auto_bulk": "Bulk Detect (Range)",
         "prev": "Previous",
@@ -231,3 +234,4 @@ TRANS = {
         "tg_wait": "Waiting {} seconds..."
     }
 }
+# --- END OF FILE core/locales.py ---

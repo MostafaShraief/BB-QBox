@@ -18,7 +18,7 @@ class ImageEditorView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setRubberBandSelectionMode(Qt.ItemSelectionMode.IntersectsItemShape)
-        self.setDragMode(QGraphicsView.DragMode.RubberBandDrag) # Enable multiple selection
+        self.setDragMode(QGraphicsView.DragMode.RubberBandDrag) 
 
     def wheelEvent(self, event: QWheelEvent):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -33,12 +33,13 @@ class ImageEditorView(QGraphicsView):
         self.scale(factor, factor)
 
 class CropItem(QGraphicsRectItem):
-    def __init__(self, rect, scene_parent, unique_id, display_text, is_linked_child=False):
+    def __init__(self, rect, scene_parent, unique_id, display_text, is_linked_child=False, is_note=False):
         super().__init__(rect)
         self.scene_parent = scene_parent
-        self.unique_id = unique_id # internal ID (index in the list)
+        self.unique_id = unique_id 
         self.display_text = display_text
         self.is_linked_child = is_linked_child
+        self.is_note = is_note
         
         self.setFlags(QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable)
         self.setAcceptHoverEvents(True)
@@ -59,6 +60,11 @@ class CropItem(QGraphicsRectItem):
         if self.is_linked_child:
             color = QColor("#4CAF50")
             fill = QColor(76, 175, 80, 50)
+            
+        # Note Blue
+        if self.is_note:
+            color = QColor("#4da3ff")
+            fill = QColor(77, 163, 255, 50)
 
         self.setPen(QPen(color, 2, Qt.PenStyle.SolidLine))
         self.setBrush(QBrush(fill))
@@ -67,10 +73,10 @@ class CropItem(QGraphicsRectItem):
         super().paint(painter, option, widget)
         rect = self.rect()
         
-        # Badge Color
-        bg_color = QColor("#D90000") if not self.is_linked_child else QColor("#388E3C")
+        bg_color = QColor("#D90000")
+        if self.is_linked_child: bg_color = QColor("#388E3C")
+        if self.is_note: bg_color = QColor("#1976D2")
         
-        # Draw Number Badge (Dynamic Width)
         text = str(self.display_text)
         font = QFont("Segoe UI", 10, QFont.Weight.Bold)
         fm = lambda: painter.fontMetrics()
@@ -86,7 +92,6 @@ class CropItem(QGraphicsRectItem):
         painter.drawText(QRectF(rect.left(), rect.top(), badge_w, badge_h), 
                          Qt.AlignmentFlag.AlignCenter, text)
         
-        # Draw Handles if selected
         if self.isSelected():
             painter.setBrush(Qt.GlobalColor.white)
             painter.setPen(QPen(Qt.GlobalColor.black, 1))

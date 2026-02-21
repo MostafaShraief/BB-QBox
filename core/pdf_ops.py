@@ -1,3 +1,4 @@
+# --- START OF FILE core/pdf_ops.py ---
 import fitz  # PyMuPDF
 import re
 import os
@@ -38,11 +39,21 @@ def analyze_pdf_layout(doc, page_num):
         x0, y0, x1, y1, text, _, _ = b
         text = text.strip()
         if not text or y0 < header_margin or y0 > footer_margin: continue
-        if any(k in text for k in stop_keywords):
+        
+        # Check if stop keyword is at the start of the text block (ignoring bullet numbers)
+        is_stop = False
+        cleaned_text = re.sub(r'^[\d\-.)\s]+', '', text)
+        for k in stop_keywords:
+            if cleaned_text.startswith(k):
+                is_stop = True
+                break
+                
+        if is_stop:
             if curr_rect:
                 detected_rects.append(curr_rect)
                 curr_rect = None
             continue 
+            
         is_new_q = question_start_pattern.match(text)
         if is_new_q:
             if curr_rect: detected_rects.append(curr_rect)
@@ -56,8 +67,15 @@ def analyze_pdf_layout(doc, page_num):
 
     final_qrects = []
     padding = 5
+    page_w = page.rect.width
+    
     for r in detected_rects:
         rx0, ry0, rx1, ry1 = r
+        # Extend horizontally to match fully aligned grid options (e.g. side-by-side)
+        margin_x = 20
+        rx0 = min(rx0, margin_x)
+        rx1 = max(rx1, page_w - margin_x)
+        
         ui_x = rx0 * PDF_ZOOM
         ui_y = ry0 * PDF_ZOOM
         ui_w = (rx1 - rx0) * PDF_ZOOM
@@ -67,8 +85,8 @@ def analyze_pdf_layout(doc, page_num):
     return final_qrects
 
 def save_cropped_images_merged(file_list, pages_data, destination_folder, alignment="right"):
-    # (Restored to original working logic)
     questions_map = {} 
+    notes_map = {}
     auto_counter = 1
     sorted_page_indices = sorted(pages_data.keys())
     
@@ -93,6 +111,7 @@ def save_cropped_images_merged(file_list, pages_data, destination_folder, alignm
             rect = crop_data['rect']
             man_id = crop_data.get('id')
             man_order = crop_data.get('order', 0)
+            is_note = crop_data.get('is_note', False)
             
             x1 = max(0, int(rect.left()))
             y1 = max(0, int(rect.top()))
@@ -106,36 +125,40 @@ def save_cropped_images_merged(file_list, pages_data, destination_folder, alignm
             final_id = 0
             if man_id is not None and man_id > 0:
                 final_id = man_id
-                if final_id >= auto_counter:
+                if not is_note and final_id >= auto_counter:
                     auto_counter = final_id + 1
             else:
-                final_id = auto_counter
-                auto_counter += 1
+                if is_note:
+                    final_id = max(1, auto_counter - 1)
+                else:
+                    final_id = auto_counter
+                    auto_counter += 1
             
             final_order = man_order if man_order is not None else 0
             
-            if final_id not in questions_map:
-                questions_map[final_id] = []
-            questions_map[final_id].append((final_order, sub_img))
+            if is_note:
+                if final_id not in notes_map:
+                    notes_map[final_id] = []
+                notes_map[final_id].append((final_order, sub_img))
+            else:
+                if final_id not in questions_map:
+                    questions_map[final_id] = []
+                questions_map[final_id].append((final_order, sub_img))
 
     saved_count = 0
     if not os.path.exists(destination_folder):
         os.makedirs(destination_folder)
 
-    for q_id, parts in questions_map.items():
-        parts.sort(key=lambda x: x[0])
-        imgs = [x[1] for x in parts]
-        if not imgs: continue
-        
-        if len(imgs) == 1:
-            final_img = imgs[0]
+    def merge_and_save(img_list, save_path):
+        if len(img_list) == 1:
+            final_img = img_list[0]
         else:
-            total_h = sum(img.height for img in imgs)
-            max_w = max(img.width for img in imgs)
+            total_h = sum(img.height for img in img_list)
+            max_w = max(img.width for img in img_list)
             final_img = Image.new('RGB', (max_w, total_h), (255, 255, 255))
             
             curr_y = 0
-            for img in imgs:
+            for img in img_list:
                 x_pos = 0
                 if alignment == "right":
                     x_pos = max_w - img.width
@@ -146,12 +169,30 @@ def save_cropped_images_merged(file_list, pages_data, destination_folder, alignm
                 
                 final_img.paste(img, (x_pos, curr_y))
                 curr_y += img.height
+        final_img.save(save_path, "JPEG", quality=95)
+
+    for q_id, parts in questions_map.items():
+        parts.sort(key=lambda x: x[0])
+        imgs = [x[1] for x in parts]
+        if not imgs: continue
         
         try:
             save_path = os.path.join(destination_folder, f"{q_id}.jpg")
-            final_img.save(save_path, "JPEG", quality=95)
+            merge_and_save(imgs, save_path)
             saved_count += 1
         except Exception as e:
             print(f"Error saving {q_id}: {e}")
 
+    for q_id, parts in notes_map.items():
+        parts.sort(key=lambda x: x[0])
+        imgs = [x[1] for x in parts]
+        if not imgs: continue
+        
+        try:
+            save_path = os.path.join(destination_folder, f"{q_id}_note.jpg")
+            merge_and_save(imgs, save_path)
+        except Exception as e:
+            print(f"Error saving note {q_id}: {e}")
+
     return saved_count
+# --- END OF FILE core/pdf_ops.py ---

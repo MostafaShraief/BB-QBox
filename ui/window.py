@@ -77,6 +77,7 @@ class ImageCropperApp(QMainWindow):
         self.toolbar.addSeparator()
         self.add_action("Link", tr("link_crops"), self.link_crop_manual, "link")
         self.add_action("Unlink", tr("unlink_crops"), self.unlink_crop, "unlink")
+        self.add_action("Mark Note", tr("mark_note"), self.toggle_note, "mark_note")
 
         if not self.single_image_mode:
             self.toolbar.addSeparator()
@@ -88,8 +89,6 @@ class ImageCropperApp(QMainWindow):
             self.lbl_page_info = QLabel(" 0 / 0 ")
             self.toolbar.addWidget(self.lbl_page_info)
             self.act_next = self.add_action("Next", tr("next"), lambda: self.navigate(1), "next")
-        
-        # Removed "Settings" button to prevent crash
         
         self.update_undo_redo_buttons()
 
@@ -127,7 +126,6 @@ class ImageCropperApp(QMainWindow):
         self.menu.show()
         self.close()
 
-    # --- Logic ---
     def get_current_page_crops(self):
         if self.current_index not in self.pages_crops: self.pages_crops[self.current_index] = []
         return self.pages_crops[self.current_index]
@@ -137,7 +135,8 @@ class ImageCropperApp(QMainWindow):
         for p in sorted(self.pages_crops.keys()):
             if p == self.current_index: break
             for item in self.pages_crops[p]:
-                if item.get('id') is None: count += 1
+                if item.get('id') is None and not item.get('is_note', False): 
+                    count += 1
         return count
 
     def link_crop_manual(self):
@@ -159,6 +158,16 @@ class ImageCropperApp(QMainWindow):
             if isinstance(item, CropItem):
                 c = self.get_current_page_crops()[item.unique_id]
                 c['id'] = None; c['order'] = None
+        self.draw_overlays_only()
+
+    def toggle_note(self):
+        sel = self.scene.selectedItems()
+        if not sel: return
+        self.push_undo()
+        for item in sel:
+            if isinstance(item, CropItem):
+                c = self.get_current_page_crops()[item.unique_id]
+                c['is_note'] = not c.get('is_note', False)
         self.draw_overlays_only()
 
     def renumber_selected_crop(self):
@@ -185,7 +194,7 @@ class ImageCropperApp(QMainWindow):
     def handle_geometry_update(self, idx, rect):
         self.get_current_page_crops()[idx]['rect'] = rect
     def handle_creation(self, rect):
-        self.get_current_page_crops().append({'rect': rect, 'id': None, 'order': None})
+        self.get_current_page_crops().append({'rect': rect, 'id': None, 'order': None, 'is_note': False})
         self.get_current_page_crops().sort(key=lambda x: x['rect'].top())
         self.draw_overlays_only()
 
@@ -196,9 +205,13 @@ class ImageCropperApp(QMainWindow):
         crops = self.get_current_page_crops()
         cnt = self._calc_auto_id_start()
         for i, d in enumerate(crops):
+            is_note = d.get('is_note', False)
             lbl = f"{d['id']}_{d['order']}" if d.get('id') else str(cnt)
-            if not d.get('id'): cnt+=1
-            self.scene.addItem(CropItem(d['rect'], self.scene, i, lbl, bool(d.get('id'))))
+            if is_note:
+                lbl += " (N)"
+            if not d.get('id') and not is_note: 
+                cnt += 1
+            self.scene.addItem(CropItem(d['rect'], self.scene, i, lbl, bool(d.get('id')), is_note))
 
     def auto_detect_current_page(self):
         if not self.file_list: return
@@ -207,7 +220,7 @@ class ImageCropperApp(QMainWindow):
         if f[0] == 'pdf':
             try:
                 r = analyze_pdf_layout(f[1], f[2])
-                self.pages_crops[self.current_index] = [{'rect':x, 'id':None, 'order':None} for x in r]
+                self.pages_crops[self.current_index] = [{'rect':x, 'id':None, 'order':None, 'is_note': False} for x in r]
                 self.draw_overlays_only()
             except: pass
 
@@ -227,7 +240,7 @@ class ImageCropperApp(QMainWindow):
                     f = self.file_list[i]
                     if f[0] == 'pdf':
                         r = analyze_pdf_layout(f[1], f[2])
-                        self.pages_crops[i] = [{'rect':x, 'id':None, 'order':None} for x in r]
+                        self.pages_crops[i] = [{'rect':x, 'id':None, 'order':None, 'is_note': False} for x in r]
                     cnt += 1; pd.setValue(cnt); QApplication.processEvents()
                 if (s-1) <= self.current_index < e: self.draw_overlays_only()
             except: pass

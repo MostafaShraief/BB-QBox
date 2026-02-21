@@ -25,8 +25,8 @@ except ImportError:
 
 
 class TelegramWorker(QThread):
-    log_signal = pyqtSignal(str, str) # message, color code
-    progress_signal = pyqtSignal(int, int) # current, total
+    log_signal = pyqtSignal(str, str) 
+    progress_signal = pyqtSignal(int, int) 
     finished_signal = pyqtSignal()
     error_signal = pyqtSignal(str)
     stopped_at_signal = pyqtSignal(int)
@@ -69,6 +69,16 @@ class TelegramWorker(QThread):
             
         return sorted(found)
 
+    def get_note_media_file(self, folder, idx):
+        exts = ['.jpg', '.png', '.gif']
+        img_dir = os.path.join(folder, "images")
+        if not os.path.exists(img_dir): return None
+        for ext in exts:
+            p = os.path.join(img_dir, f"{idx}_note{ext}")
+            if os.path.exists(p):
+                return p
+        return None
+
     def escape_markdown(self, text):
         if not isinstance(text, str): return str(text)
         escape_chars = r'_*[]()~`>#+-=|{}.!'
@@ -105,14 +115,13 @@ class TelegramWorker(QThread):
                 
             quiz = quizzes[i]
             self.progress_signal.emit(idx, total)
-            self.log_signal.emit(tr("tg_processing").format(idx), "#4da3ff") # Blue
+            self.log_signal.emit(tr("tg_processing").format(idx), "#4da3ff") 
 
             media_files = self.get_media_files(self.bank_path, idx)
             
             success = False
             retries = 0
             
-            # Send Data Loop with Retries
             while retries < 5 and self.is_running:
                 try:
                     last_msg_id = None
@@ -129,7 +138,6 @@ class TelegramWorker(QThread):
                                 r.raise_for_status()
                                 last_msg_id = r.json().get('result', {}).get('message_id')
                         else:
-                            # Album
                             files_dict = {}
                             media_arr = []
                             file_handles = []
@@ -152,19 +160,27 @@ class TelegramWorker(QThread):
                             last_msg_id = r.json().get('result', [])[-1].get('message_id')
 
                     # 2. Send Poll
+                    options = quiz.get("options", [])
+                    if len(options) < 2:
+                        options = ["A", "B", "C", "D", "E"][:max(2, len(quiz.get("correct_options", [0])) + 1)]
+                        if len(options) < 2: options = ["A", "B"]
+                        
+                    correct_opts = quiz.get("correct_options", [])
+                    if not correct_opts: correct_opts = [0]
+                    
                     expl = quiz.get("explanation", "").strip()
-                    is_quiz = len(quiz.get("correct_options", [])) == 1
+                    is_quiz = len(correct_opts) == 1
                     
                     poll_data = {
                         "chat_id": chat_id,
-                        "question": quiz.get("question", "?"),
-                        "options": json.dumps(quiz.get("options", [])),
+                        "question": quiz.get("question", "?") or "?",
+                        "options": json.dumps(options),
                         "is_anonymous": True,
                         "type": "quiz" if is_quiz else "regular",
                         "allows_multiple_answers": not is_quiz
                     }
                     if is_quiz:
-                        poll_data["correct_option_id"] = quiz.get("correct_options", [0])[0]
+                        poll_data["correct_option_id"] = correct_opts[0]
                         if expl:
                             poll_data["explanation"] = self.escape_markdown(expl)
                             poll_data["explanation_parse_mode"] = "MarkdownV2"
@@ -174,20 +190,30 @@ class TelegramWorker(QThread):
                     r = requests.post(f"{base_url}/sendPoll", data=poll_data, timeout=30)
                     r.raise_for_status()
                     poll_msg_id = r.json().get('result', {}).get('message_id')
-                    self.log_signal.emit("Poll sent.", "#66bb6a") # Green
+                    self.log_signal.emit("Poll sent.", "#66bb6a") 
                     
-                    # Spoiler for non-quiz or fallback
-                    if (not is_quiz) or (is_quiz and expl):
-                        correct_syms = [self.option_letters[k] for k in quiz["correct_options"] if 0 <= k < 10]
+                    # 3. Spoiler and Notes Image
+                    note_media = self.get_note_media_file(self.bank_path, idx)
+                    if (not is_quiz) or (is_quiz and expl) or note_media:
+                        correct_syms = [self.option_letters[k] for k in correct_opts if 0 <= k < 10]
                         txt = f"✅ الجواب: {', '.join(correct_syms)}"
                         if expl: txt += f"\n💡 {expl}"
                         spoiler = f"||{self.escape_markdown(txt)}||"
                         
-                        r2 = requests.post(f"{base_url}/sendMessage", data={
-                            "chat_id": chat_id, "text": spoiler, 
-                            "parse_mode": "MarkdownV2", "reply_to_message_id": poll_msg_id
-                        }, timeout=30)
-                        r2.raise_for_status()
+                        if note_media:
+                            with open(note_media, 'rb') as f:
+                                r2 = requests.post(f"{base_url}/sendPhoto", data={
+                                    "chat_id": chat_id, "caption": spoiler, 
+                                    "parse_mode": "MarkdownV2", "reply_to_message_id": poll_msg_id,
+                                    "has_spoiler": True
+                                }, files={'photo': f}, timeout=30)
+                                r2.raise_for_status()
+                        else:
+                            r2 = requests.post(f"{base_url}/sendMessage", data={
+                                "chat_id": chat_id, "text": spoiler, 
+                                "parse_mode": "MarkdownV2", "reply_to_message_id": poll_msg_id
+                            }, timeout=30)
+                            r2.raise_for_status()
                     
                     success = True
                     break
@@ -211,7 +237,6 @@ class TelegramWorker(QThread):
                 self.is_running = False
                 return
             
-            # Post-question delay handling
             for _ in range(30):
                 if not self.is_running: break
                 time.sleep(0.1)
@@ -257,15 +282,23 @@ class TelegramWorker(QThread):
                         reply_to = msg[-1].id if isinstance(msg, list) else msg.id
 
                     # 2. Poll
-                    answers = [PollAnswer(TextWithEntities(o, []), bytes([k])) for k, o in enumerate(quiz["options"])]
-                    correct = [bytes([k]) for k in quiz["correct_options"]]
+                    options = quiz.get("options", [])
+                    if len(options) < 2:
+                        options = ["A", "B", "C", "D", "E"][:max(2, len(quiz.get("correct_options", [0])) + 1)]
+                        if len(options) < 2: options = ["A", "B"]
+
+                    correct_opts = quiz.get("correct_options", [])
+                    if not correct_opts: correct_opts = [0]
+
+                    answers = [PollAnswer(TextWithEntities(str(o), []), bytes([k])) for k, o in enumerate(options)]
+                    correct = [bytes([k]) for k in correct_opts]
                     is_quiz = len(correct) == 1
                     
                     expl = quiz.get("explanation", "").strip()
                     
                     poll = Poll(
                         id=0,
-                        question=TextWithEntities(quiz["question"], []),
+                        question=TextWithEntities(quiz.get("question", "?") or "?", []),
                         answers=answers,
                         closed=False,
                         public_voters=False,
@@ -285,12 +318,17 @@ class TelegramWorker(QThread):
                     )
                     self.log_signal.emit("Poll sent.", "#66bb6a")
 
-                    # Spoiler
-                    if (not is_quiz) or (is_quiz and sol):
-                        correct_syms = [self.option_letters[k] for k in quiz["correct_options"] if 0 <= k < 10]
+                    # 3. Spoiler
+                    note_media = self.get_note_media_file(self.bank_path, idx)
+                    if (not is_quiz) or (is_quiz and sol) or note_media:
+                        correct_syms = [self.option_letters[k] for k in correct_opts if 0 <= k < 10]
                         txt = f"✅ Answer: {', '.join(correct_syms)}"
                         if sol: txt += f"\n💡 Note: {sol}"
-                        await client.send_message(real_chat_id, f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
+                        
+                        if note_media:
+                            await client.send_file(real_chat_id, note_media, caption=f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
+                        else:
+                            await client.send_message(real_chat_id, f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
                         
                     success = True
                     break
@@ -384,7 +422,7 @@ class TelegramWindow(QMainWindow):
         self.spin_start.setValue(1)
         self.spin_start.setMinimumWidth(80)
         h_bank.addWidget(self.spin_start)
-        h_bank.setStretch(0, 1) # Make combo box take up space
+        h_bank.setStretch(0, 1) 
         
         gb_bank_l.addLayout(h_bank)
         layout.addWidget(gb_bank)
@@ -436,7 +474,7 @@ class TelegramWindow(QMainWindow):
         sets_l.addWidget(self.stack_bot)
         sets_l.addWidget(self.stack_user)
         
-        # Chat ID (Common)
+        # Chat ID
         self.txt_chat = QLineEdit()
         self.txt_chat.setPlaceholderText("@channel or -100xxxxxxxx")
         sets_l.addWidget(QLabel(tr("tg_chat_id")))
@@ -502,7 +540,7 @@ class TelegramWindow(QMainWindow):
             self.stack_user.show()
 
     def load_creds(self):
-        creds = ConfigManager.get_config_value("telegram", {})
+        creds = ConfigManager.get_secret("telegram", {})
         self.txt_token.setText(creds.get("bot_token", ""))
         self.txt_chat.setText(creds.get("chat_id", ""))
         self.txt_api_id.setText(creds.get("api_id", ""))
@@ -515,7 +553,7 @@ class TelegramWindow(QMainWindow):
             "api_id": self.txt_api_id.text().strip(),
             "api_hash": self.txt_api_hash.text().strip()
         }
-        ConfigManager.set_config_value("telegram", data)
+        ConfigManager.set_secret("telegram", data)
         return data
 
     def start_process(self):
@@ -545,7 +583,6 @@ class TelegramWindow(QMainWindow):
         self.worker.error_signal.connect(self.on_error)
         self.worker.stopped_at_signal.connect(self.on_stopped_at)
         
-        # When the Thread shuts off for any reason, reset UI buttons properly.
         self.worker.finished.connect(self.reset_ui)
         self.worker.start()
 
@@ -564,7 +601,6 @@ class TelegramWindow(QMainWindow):
         self.prog_bar.setValue(curr)
 
     def on_stopped_at(self, idx):
-        # Captures exactly where the worker stopped (the current failed question or the next queued)
         self.spin_start.setValue(idx)
         resume_text = "Resume Publishing" if ConfigManager.get_language() == "en" else "استئناف النشر"
         self.btn_start.setText(resume_text)

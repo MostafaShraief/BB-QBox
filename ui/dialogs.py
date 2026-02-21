@@ -93,6 +93,7 @@ class ShortcutsWidget(QWidget):
             "save": tr("save"), "undo": tr("undo"), "redo": tr("redo"),
             "delete": tr("delete"), "renumber": tr("renumber"),
             "link": tr("link_crops"), "unlink": tr("unlink_crops"),
+            "mark_note": tr("mark_note"),
             "detect_page": tr("auto_page"), "detect_bulk": tr("auto_bulk"),
             "prev": tr("prev"), "next": tr("next")
         }
@@ -227,6 +228,5 @@ class EditQuestionDialog(QDialog):
         self.cropper = ImageCropperApp(single_image_mode=True)
         self.cropper.load_single_image(img_path)
         self.cropper.show()
-        # Mark modified so viewer reloads
         self.image_modified = True
 # --- END OF FILE ui/dialogs.py ---

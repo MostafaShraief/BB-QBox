@@ -1,3 +1,4 @@
+# --- START OF FILE ui/viewer.py ---
 import os
 import json
 import shutil
@@ -7,7 +8,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QScrollArea, QRadioButton, QButtonGroup, QFrame,
                              QComboBox, QMessageBox, QCheckBox, QLineEdit,
                              QTextEdit, QFileDialog, QScrollBar)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap, QFont
 from core.config import ConfigManager
 from ui.common import tr
@@ -37,10 +38,9 @@ class OptionEditRow(QWidget):
         self.lbl_prefix.setStyleSheet("color: #4da3ff; font-weight: bold; font-size: 16px;")
         layout.addWidget(self.lbl_prefix)
 
-        clean_text = re.sub(r'^[a-zA-Zأ-ي0-9]\s*[-.)]\s*', '', text).strip()
+        clean_text = re.sub(r'^[a-zA-Zأ-ي0-9]\s*[-.)]\s*', '', str(text)).strip()
         self.line_edit = QLineEdit(clean_text)
         
-        # EDIT: Option Text (Optional) translation
         ph_text = "نص الخيار (اختياري)..." if ConfigManager.get_language() == "ar" else "Option text (optional)..."
         self.line_edit.setPlaceholderText(ph_text)
         layout.addWidget(self.line_edit)
@@ -50,6 +50,7 @@ class OptionEditRow(QWidget):
         button_group.addButton(self.radio)
         self.radio.toggled.connect(lambda checked: checked and on_set_correct())
         layout.addWidget(self.radio)
+
 
 class QuestionViewer(QMainWindow):
     def __init__(self):
@@ -134,7 +135,6 @@ class QuestionViewer(QMainWindow):
             }
             QLabel#AnsTitle { color: #66bb6a; font-weight: bold; font-size: 18px; margin-bottom: 5px; }
             
-            /* --- Improved Radio & Checkbox Styles --- */
             QRadioButton { spacing: 10px; padding: 5px; border-radius: 4px; }
             QRadioButton::indicator { width: 20px; height: 20px; border: 2px solid #666; border-radius: 12px; }
             QRadioButton::indicator:checked { background-color: #4da3ff; border-color: #4da3ff; }
@@ -149,7 +149,7 @@ class QuestionViewer(QMainWindow):
             QCheckBox::indicator:checked {
                 background-color: #1565C0;
                 border-color: #4da3ff;
-                image: url(ui/resources/check_white.png); /* Fallback to a drawn tick if missing */
+                image: url(ui/resources/check_white.png); 
             }
             QCheckBox::indicator:hover {
                 border-color: #4da3ff;
@@ -166,7 +166,6 @@ class QuestionViewer(QMainWindow):
         # --- Header ---
         header_widget = QWidget()
         header_widget.setStyleSheet("background-color: #252525; border-bottom: 1px solid #333;")
-        # EDIT: Set a fixed height for the bar so it doesn't take half the screen
         header_widget.setFixedHeight(75)
         
         header_layout = QHBoxLayout(header_widget)
@@ -183,7 +182,6 @@ class QuestionViewer(QMainWindow):
         
         header_layout.addStretch()
         
-        # EDIT: Show answer auto checked by default and styled
         self.chk_always_show = QCheckBox(tr("view_always_show"))
         self.chk_always_show.setChecked(True)
         header_layout.addWidget(self.chk_always_show)
@@ -245,7 +243,6 @@ class QuestionViewer(QMainWindow):
         self.img_label.hide()
         card_v.addWidget(self.img_label)
 
-        # EDIT: Image Tools - Add color and translations
         self.img_tools = QWidget()
         self.img_tools.setStyleSheet("background: transparent; border: none;")
         it_lay = QHBoxLayout(self.img_tools)
@@ -295,7 +292,6 @@ class QuestionViewer(QMainWindow):
         self.edit_opt_container.hide()
         card_v.addWidget(self.edit_opt_container)
         
-        # EDIT: Translate Add Option
         add_opt_txt = "➕ " + ("إضافة خيار" if ConfigManager.get_language() == "ar" else "Add Option")
         self.btn_add_opt = QPushButton(add_opt_txt)
         self.btn_add_opt.setStyleSheet("background-color: #333; border: 1px dashed #666; color: #aaa; padding: 12px;")
@@ -320,12 +316,18 @@ class QuestionViewer(QMainWindow):
         self.lbl_expl.setStyleSheet("color: #ddd; font-size: 16px; line-height: 1.5; border: none; background: transparent;")
         self.lbl_expl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         
+        self.note_img_label = QLabel()
+        self.note_img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.note_img_label.setStyleSheet("background: #000; border-radius: 6px; border: 1px solid #444; padding: 5px;")
+        self.note_img_label.hide()
+        
         self.edit_expl = QTextEdit()
         self.edit_expl.setMinimumHeight(100)
         self.edit_expl.hide()
         
         ans_v.addWidget(self.lbl_ans_status)
         ans_v.addWidget(self.lbl_expl)
+        ans_v.addWidget(self.note_img_label)
         ans_v.addWidget(self.edit_expl)
         self.ans_box.hide()
         self.content_layout.addWidget(self.ans_box)
@@ -353,7 +355,6 @@ class QuestionViewer(QMainWindow):
         self.scroll_area.setWidget(content_container)
         splitter.addWidget(self.scroll_area)
         
-        # EDIT: Ensure the splitter takes up the remaining height
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 4)
         main_layout.addWidget(splitter, 1)
@@ -371,19 +372,25 @@ class QuestionViewer(QMainWindow):
         if os.path.exists(p):
             with open(p, 'r', encoding='utf-8') as f:
                 self.current_bank_data = json.load(f)
-            self.refresh_list()
+            self.refresh_list(0)
         else:
             self.current_bank_data = []
             self.list_widget.clear()
 
-    def refresh_list(self):
+    def refresh_list(self, select_index=0):
+        self.list_widget.blockSignals(True)
         self.list_widget.clear()
         for i, q in enumerate(self.current_bank_data):
             raw_txt = q.get('question','?')
             clean_txt = re.sub(r'^\d+\s*[-.)]\s*', '', raw_txt).strip()
             preview = clean_txt[:30].replace('\n', ' ')
             self.list_widget.addItem(f"{i+1}. {preview}...")
-        if self.current_bank_data: self.list_widget.setCurrentRow(0)
+        self.list_widget.blockSignals(False)
+        
+        if self.current_bank_data:
+            idx_to_select = min(select_index, len(self.current_bank_data) - 1)
+            self.list_widget.setCurrentRow(idx_to_select)
+            self.load_question(idx_to_select)
 
     def load_question(self, index):
         if index < 0 or index >= len(self.current_bank_data): return
@@ -420,14 +427,17 @@ class QuestionViewer(QMainWindow):
             self.opt_view_layout.removeWidget(b); b.deleteLater()
         
         for i, opt in enumerate(q.get("options", [])):
-            rb = QRadioButton(opt)
+            rb = QRadioButton(str(opt))
             rb.setProperty("idx", i)
             rb.setStyleSheet("font-size: 16px; padding: 6px;")
             self.opt_view_layout.addWidget(rb)
             self.opt_group_view.addButton(rb)
 
         self.ans_box.hide()
+        self.note_img_label.hide()
         if self.chk_always_show.isChecked(): self.reveal_answer()
+        
+        QTimer.singleShot(0, lambda: self.scroll_area.verticalScrollBar().setValue(0))
 
     def toggle_edit_mode(self):
         self.edit_mode = not self.edit_mode
@@ -435,7 +445,10 @@ class QuestionViewer(QMainWindow):
 
         if self.edit_mode:
             self.q_text_edit.setText(q.get("question", ""))
-            self.temp_correct_idx = q.get("correct_options", [0])[0]
+            
+            correct = q.get("correct_options", [0])
+            self.temp_correct_idx = correct[0] if correct else 0
+            
             self.edit_expl.setText(q.get("explanation", ""))
             
             while self.edit_opt_layout.count():
@@ -499,7 +512,8 @@ class QuestionViewer(QMainWindow):
         with open(os.path.join(self.current_bank_path, "bank.json"), 'w', encoding='utf-8') as f:
             json.dump(self.current_bank_data, f, indent=2, ensure_ascii=False)
             
-        self.toggle_edit_mode(); self.load_question(self.current_q_index); self.refresh_list()
+        self.toggle_edit_mode()
+        self.refresh_list(self.current_q_index)
 
     def update_ui_state(self):
         v = self.edit_mode
@@ -522,7 +536,8 @@ class QuestionViewer(QMainWindow):
 
     def reveal_answer(self):
         q = self.current_bank_data[self.current_q_index]
-        correct = q.get("correct_options", [0])[0]
+        correct_opts = q.get("correct_options", [0])
+        correct = correct_opts[0] if correct_opts else 0
         is_ar = ConfigManager.get_language() == "ar"
         
         for b in self.opt_group_view.buttons():
@@ -532,13 +547,11 @@ class QuestionViewer(QMainWindow):
             else:
                 b.setStyleSheet("color: #999; font-size: 16px;")
         
-        # EDIT: Correct Arabic Translation for Answer Box
         self.lbl_ans_status.setText("✅ " + (tr("view_ans_header") if tr("view_ans_header") != "view_ans_header" else "الإجابة الصحيحة:"))
         self.lbl_ans_status.setStyleSheet("color: #66bb6a; font-weight: bold;")
         
         expl_text = q.get('explanation', '').strip()
         
-        # Arabic labels for the answer box
         expl_header = "الشرح:" if is_ar else "Explanation:"
         no_expl_txt = "لا يوجد شرح لهذا السؤال." if is_ar else "No explanation provided."
         ans_txt_label = "الإجابة الصحيحة: الخيار" if is_ar else "Correct Answer: Option"
@@ -547,13 +560,23 @@ class QuestionViewer(QMainWindow):
         
         self.lbl_expl.setText(f"<b>{ans_txt_label} {correct+1}</b><br><br><b>{expl_header}</b><br>{expl_text}")
         
+        note_img_p = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}_note.jpg")
+        if os.path.exists(note_img_p):
+            pix = QPixmap(note_img_p)
+            if pix.width() > 900: pix = pix.scaledToWidth(900, Qt.TransformationMode.SmoothTransformation)
+            self.note_img_label.setPixmap(pix)
+            self.note_img_label.show()
+        else:
+            self.note_img_label.hide()
+            
         self.ans_box.show()
         if self.scroll_area.verticalScrollBar():
              self.scroll_area.verticalScrollBar().setValue(self.scroll_area.verticalScrollBar().maximum())
 
     def on_option_clicked(self, btn):
         if self.edit_mode: return
-        correct = self.current_bank_data[self.current_q_index].get("correct_options", [0])[0]
+        correct_opts = self.current_bank_data[self.current_q_index].get("correct_options", [0])
+        correct = correct_opts[0] if correct_opts else 0
         
         if btn.property("idx") == correct:
             self.reveal_answer()
@@ -565,6 +588,7 @@ class QuestionViewer(QMainWindow):
             self.lbl_ans_status.setText(f"❌ {wrong_title}") 
             self.lbl_ans_status.setStyleSheet("color: #ef5350; font-weight: bold;")
             self.lbl_expl.setText(wrong_msg)
+            self.note_img_label.hide()
             self.ans_box.show()
 
     def replace_image(self):
@@ -589,21 +613,34 @@ class QuestionViewer(QMainWindow):
         idx = self.current_q_index
         self.current_bank_data.pop(idx)
         img_dir = os.path.join(self.current_bank_path, "images")
+        
         t_img = os.path.join(img_dir, f"{idx+1}.jpg")
         if os.path.exists(t_img): os.remove(t_img)
+        t_note_img = os.path.join(img_dir, f"{idx+1}_note.jpg")
+        if os.path.exists(t_note_img): os.remove(t_note_img)
         
         curr = idx + 2
         while True:
             old = os.path.join(img_dir, f"{curr}.jpg")
-            if not os.path.exists(old): break
-            shutil.move(old, os.path.join(img_dir, f"{curr-1}.jpg")); curr += 1
+            old_note = os.path.join(img_dir, f"{curr}_note.jpg")
+            
+            moved_any = False
+            if os.path.exists(old): 
+                shutil.move(old, os.path.join(img_dir, f"{curr-1}.jpg"))
+                moved_any = True
+            if os.path.exists(old_note):
+                shutil.move(old_note, os.path.join(img_dir, f"{curr-1}_note.jpg"))
+                moved_any = True
+                
+            if not moved_any and not os.path.exists(os.path.join(img_dir, f"{curr+1}.jpg")): 
+                break
+            curr += 1
             
         with open(os.path.join(self.current_bank_path, "bank.json"), 'w', encoding='utf-8') as f:
             json.dump(self.current_bank_data, f, indent=2, ensure_ascii=False)
             
-        self.refresh_list()
         next_idx = min(idx, len(self.current_bank_data)-1)
-        if next_idx >= 0: self.load_question(next_idx)
+        self.refresh_list(next_idx)
 
     def go_home(self):
         from ui.menu import MainMenu
@@ -619,3 +656,4 @@ class QuestionViewer(QMainWindow):
              if self.list_widget.currentRow() < self.list_widget.count() - 1:
                 self.list_widget.setCurrentRow(self.list_widget.currentRow() + 1)
         super().keyPressEvent(e)
+# --- END OF FILE ui/viewer.py ---
