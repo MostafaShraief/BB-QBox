@@ -4,6 +4,7 @@ import json
 import time
 import asyncio
 import re
+import threading
 import requests
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QLineEdit, QComboBox, 
@@ -38,11 +39,15 @@ class TelegramWorker(QThread):
         self.mode = mode
         self.start_idx = start_idx
         self.title_msg = title_msg
-        self.is_running = True
+        self._stop_event = threading.Event()
         self.option_letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
 
+    @property
+    def is_running(self):
+        return not self._stop_event.is_set()
+
     def stop(self):
-        self.is_running = False
+        self._stop_event.set()
 
     def get_media_files(self, folder, idx):
         found = []
@@ -158,23 +163,26 @@ class TelegramWorker(QThread):
                             files_dict = {}
                             media_arr = []
                             file_handles = []
-                            for j, p in enumerate(media_files):
-                                fh = open(p, 'rb')
-                                file_handles.append(fh)
-                                key = f"media{j}"
-                                files_dict[key] = fh
-                                media_arr.append({
-                                    "type": "photo", 
-                                    "media": f"attach://{key}",
-                                    "caption": f"Question #{idx}" if j==0 else ""
-                                })
-                            
-                            r = requests.post(f"{base_url}/sendMediaGroup", 
-                                              data={'chat_id': chat_id, 'media': json.dumps(media_arr)}, 
-                                              files=files_dict, timeout=60)
-                            for fh in file_handles: fh.close()
-                            r.raise_for_status()
-                            last_msg_id = r.json().get('result', [])[-1].get('message_id')
+                            try:
+                                for j, p in enumerate(media_files):
+                                    fh = open(p, 'rb')
+                                    file_handles.append(fh)
+                                    key = f"media{j}"
+                                    files_dict[key] = fh
+                                    media_arr.append({
+                                        "type": "photo", 
+                                        "media": f"attach://{key}",
+                                        "caption": f"Question #{idx}" if j==0 else ""
+                                    })
+                                
+                                r = requests.post(f"{base_url}/sendMediaGroup", 
+                                                  data={'chat_id': chat_id, 'media': json.dumps(media_arr)}, 
+                                                  files=files_dict, timeout=60)
+                                r.raise_for_status()
+                                last_msg_id = r.json().get('result', [])[-1].get('message_id')
+                            finally:
+                                for fh in file_handles:
+                                    fh.close()
 
                     # 2. Send Poll
                     options = quiz.get("options", [])
@@ -269,124 +277,125 @@ class TelegramWorker(QThread):
         
         try:
             real_chat_id = int(chat_id)
-        except:
+        except (TypeError, ValueError):
             real_chat_id = chat_id
 
         client = TelegramClient('bb_qbox_session', api_id, api_hash)
-        await client.start()
-        
-        if self.title_msg and self.start_idx == 1:
-            try:
-                await client.send_message(real_chat_id, self.title_msg)
-                self.log_signal.emit("Title message sent.", "#66bb6a")
-            except Exception as e:
-                self.log_signal.emit(f"Error sending title: {e}", "#ff9800")
-        
-        for i in range(self.start_idx - 1, total):
-            idx = i + 1
-            if not self.is_running: 
-                self.stopped_at_signal.emit(idx)
-                break
-                
-            quiz = quizzes[i]
+        try:
+            await client.start()
             
-            q_text = re.sub(r'^[\d\s\-.)]+', '', quiz.get("question", "")).strip()
-            if not quiz.get("options") and not quiz.get("explanation") and not q_text:
-                self.log_signal.emit(f"Skipping empty text question #{idx}...", "#888")
-                continue
-                
-            self.progress_signal.emit(idx, total)
-            self.log_signal.emit(tr("tg_processing").format(idx), "#4da3ff")
-
-            media_files = self.get_media_files(self.bank_path, idx)
-            
-            success = False
-            retries = 0
-            while retries < 5 and self.is_running:
+            if self.title_msg and self.start_idx == 1:
                 try:
-                    reply_to = None
-
-                    # 1. Media
-                    if media_files:
-                        msg = await client.send_file(real_chat_id, media_files, caption=f"Question #{idx}")
-                        reply_to = msg[-1].id if isinstance(msg, list) else msg.id
-
-                    # 2. Poll
-                    options = quiz.get("options", [])
-                    if len(options) < 2:
-                        options = ["A", "B", "C", "D", "E"][:max(2, len(quiz.get("correct_options", [0])) + 1)]
-                        if len(options) < 2: options = ["A", "B"]
-
-                    correct_opts = quiz.get("correct_options", [])
-                    if not correct_opts: correct_opts = [0]
-
-                    answers = [PollAnswer(TextWithEntities(str(o), []), bytes([k])) for k, o in enumerate(options)]
-                    correct = [bytes([k]) for k in correct_opts]
-                    is_quiz = len(correct) == 1
-                    
-                    expl = quiz.get("explanation", "").strip()
-                    
-                    poll = Poll(
-                        id=0,
-                        question=TextWithEntities(quiz.get("question", "?") or "?", []),
-                        answers=answers,
-                        closed=False,
-                        public_voters=False,
-                        multiple_choice=not is_quiz,
-                        quiz=is_quiz,
-                        close_period=None, close_date=None
-                    )
-                    
-                    sol = expl if (is_quiz and expl) else None
-                    sol_ent = [] if sol else None
-
-                    poll_msg = await client.send_message(
-                        real_chat_id,
-                        file=InputMediaPoll(poll=poll, correct_answers=correct if is_quiz else None, 
-                                            solution=sol, solution_entities=sol_ent),
-                        reply_to=reply_to
-                    )
-                    self.log_signal.emit("Poll sent.", "#66bb6a")
-
-                    # 3. Spoiler
-                    note_media = self.get_note_media_file(self.bank_path, idx)
-                    if (not is_quiz) or (is_quiz and sol) or note_media:
-                        correct_syms = [self.option_letters[k] for k in correct_opts if 0 <= k < 10]
-                        txt = f"✅ Answer: {', '.join(correct_syms)}"
-                        if sol: txt += f"\n💡 Note: {sol}"
-                        
-                        if note_media:
-                            await client.send_file(real_chat_id, note_media, caption=f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
-                        else:
-                            await client.send_message(real_chat_id, f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
-                        
-                    success = True
-                    break
+                    await client.send_message(real_chat_id, self.title_msg)
+                    self.log_signal.emit("Title message sent.", "#66bb6a")
                 except Exception as e:
-                    retries += 1
-                    self.log_signal.emit(f"Error on Q#{idx} (Retry {retries}/5): {e}", "#ff9800")
-                    for _ in range(20):
-                        if not self.is_running: break
-                        await asyncio.sleep(0.1)
+                    self.log_signal.emit(f"Error sending title: {e}", "#ff9800")
             
-            if not self.is_running:
-                if not success:
+            for i in range(self.start_idx - 1, total):
+                idx = i + 1
+                if not self.is_running: 
                     self.stopped_at_signal.emit(idx)
-                else:
-                    self.stopped_at_signal.emit(idx + 1)
-                break
-
-            if not success:
-                self.error_signal.emit(f"Failed to send Q#{idx} after 5 retries. Stopped.")
-                self.stopped_at_signal.emit(idx)
-                self.is_running = False
-                break
+                    break
+                    
+                quiz = quizzes[i]
                 
-            for _ in range(30):
-                if not self.is_running: break
-                await asyncio.sleep(0.1)
-        
-        await client.disconnect()
+                q_text = re.sub(r'^[\d\s\-.)]+', '', quiz.get("question", "")).strip()
+                if not quiz.get("options") and not quiz.get("explanation") and not q_text:
+                    self.log_signal.emit(f"Skipping empty text question #{idx}...", "#888")
+                    continue
+                    
+                self.progress_signal.emit(idx, total)
+                self.log_signal.emit(tr("tg_processing").format(idx), "#4da3ff")
+
+                media_files = self.get_media_files(self.bank_path, idx)
+                
+                success = False
+                retries = 0
+                while retries < 5 and self.is_running:
+                    try:
+                        reply_to = None
+
+                        # 1. Media
+                        if media_files:
+                            msg = await client.send_file(real_chat_id, media_files, caption=f"Question #{idx}")
+                            reply_to = msg[-1].id if isinstance(msg, list) else msg.id
+
+                        # 2. Poll
+                        options = quiz.get("options", [])
+                        if len(options) < 2:
+                            options = ["A", "B", "C", "D", "E"][:max(2, len(quiz.get("correct_options", [0])) + 1)]
+                            if len(options) < 2: options = ["A", "B"]
+
+                        correct_opts = quiz.get("correct_options", [])
+                        if not correct_opts: correct_opts = [0]
+
+                        answers = [PollAnswer(TextWithEntities(str(o), []), bytes([k])) for k, o in enumerate(options)]
+                        correct = [bytes([k]) for k in correct_opts]
+                        is_quiz = len(correct) == 1
+                        
+                        expl = quiz.get("explanation", "").strip()
+                        
+                        poll = Poll(
+                            id=0,
+                            question=TextWithEntities(quiz.get("question", "?") or "?", []),
+                            answers=answers,
+                            closed=False,
+                            public_voters=False,
+                            multiple_choice=not is_quiz,
+                            quiz=is_quiz,
+                            close_period=None, close_date=None
+                        )
+                        
+                        sol = expl if (is_quiz and expl) else None
+                        sol_ent = [] if sol else None
+
+                        poll_msg = await client.send_message(
+                            real_chat_id,
+                            file=InputMediaPoll(poll=poll, correct_answers=correct if is_quiz else None, 
+                                                solution=sol, solution_entities=sol_ent),
+                            reply_to=reply_to
+                        )
+                        self.log_signal.emit("Poll sent.", "#66bb6a")
+
+                        # 3. Spoiler
+                        note_media = self.get_note_media_file(self.bank_path, idx)
+                        if (not is_quiz) or (is_quiz and sol) or note_media:
+                            correct_syms = [self.option_letters[k] for k in correct_opts if 0 <= k < 10]
+                            txt = f"✅ Answer: {', '.join(correct_syms)}"
+                            if sol: txt += f"\n💡 Note: {sol}"
+                            
+                            if note_media:
+                                await client.send_file(real_chat_id, note_media, caption=f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
+                            else:
+                                await client.send_message(real_chat_id, f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
+                            
+                        success = True
+                        break
+                    except Exception as e:
+                        retries += 1
+                        self.log_signal.emit(f"Error on Q#{idx} (Retry {retries}/5): {e}", "#ff9800")
+                        for _ in range(20):
+                            if not self.is_running: break
+                            await asyncio.sleep(0.1)
+                
+                if not self.is_running:
+                    if not success:
+                        self.stopped_at_signal.emit(idx)
+                    else:
+                        self.stopped_at_signal.emit(idx + 1)
+                    break
+
+                if not success:
+                    self.error_signal.emit(f"Failed to send Q#{idx} after 5 retries. Stopped.")
+                    self.stopped_at_signal.emit(idx)
+                    self._stop_event.set()
+                    break
+                    
+                for _ in range(30):
+                    if not self.is_running: break
+                    await asyncio.sleep(0.1)
+        finally:
+            await client.disconnect()
 
         if self.is_running:
             self.finished_signal.emit()
@@ -607,6 +616,19 @@ class TelegramWindow(QMainWindow):
         cfg = self.save_creds() 
         
         mode = "bot" if self.radio_bot.isChecked() else "user"
+
+        # Validate credentials before starting
+        if mode == "bot":
+            if not cfg.get("bot_token") or not cfg.get("chat_id"):
+                QMessageBox.warning(self, "Error", tr("tg_err_no_bank") if False else
+                                    "Bot token and Chat ID are required.")
+                return
+        else:
+            if not cfg.get("api_id") or not cfg.get("api_hash") or not cfg.get("chat_id"):
+                QMessageBox.warning(self, "Error",
+                                    "API ID, API Hash, and Chat ID are required for User mode.")
+                return
+
         start_idx = self.spin_start.value()
         title_msg = self.txt_title.text().strip() if self.chk_title.isChecked() else None
         

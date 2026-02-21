@@ -1,7 +1,7 @@
-/banks
-__pycache__
-config.json
-secrets.json
+banks/
 __pycache__/
 *.pyc
-banks/
+config.json
+secrets.json
+*.session
+*.session-journal

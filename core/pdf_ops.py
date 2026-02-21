@@ -2,6 +2,7 @@
 import fitz  # PyMuPDF
 import re
 import os
+import logging
 from PIL import Image
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtCore import QRectF
@@ -107,7 +108,9 @@ def save_cropped_images_merged(file_list, pages_data, destination_folder, alignm
             if x2 <= x1 or y2 <= y1: continue
             try:
                 sub_img = pil_source.crop((x1, y1, x2, y2))
-            except: continue
+            except Exception as e:
+                logging.warning("Failed to crop image region: %s", e)
+                continue
 
             final_id = 0
             if man_id is not None and man_id > 0:
@@ -168,7 +171,7 @@ def save_cropped_images_merged(file_list, pages_data, destination_folder, alignm
             merge_and_save(imgs, save_path)
             saved_count += 1
         except Exception as e:
-            print(f"Error saving {q_id}: {e}")
+            logging.error("Error saving question %s: %s", q_id, e)
 
     for q_id, parts in notes_map.items():
         parts.sort(key=lambda x: x[0])
@@ -179,7 +182,7 @@ def save_cropped_images_merged(file_list, pages_data, destination_folder, alignm
             save_path = os.path.join(destination_folder, f"{q_id}_note.jpg")
             merge_and_save(imgs, save_path)
         except Exception as e:
-            print(f"Error saving note {q_id}: {e}")
+            logging.error("Error saving note %s: %s", q_id, e)
 
     return saved_count
 # --- END OF FILE core/pdf_ops.py ---
