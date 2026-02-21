@@ -163,13 +163,14 @@ class CropItem(QGraphicsRectItem):
 class EditorScene(QGraphicsScene):
     interaction_started = pyqtSignal() 
     item_geometry_changed = pyqtSignal(int, QRectF) 
-    item_created = pyqtSignal(QRectF)
+    item_created = pyqtSignal(QRectF, bool) # Added bool parameter for is_note
 
     def __init__(self):
         super().__init__()
         self.drawing = False
         self.start_point = None
         self.current_temp_item = None
+        self.note_mode = False
 
     def notify_interaction_start(self):
         self.interaction_started.emit()
@@ -185,7 +186,10 @@ class EditorScene(QGraphicsScene):
             self.drawing = True
             self.start_point = event.scenePos()
             self.current_temp_item = QGraphicsRectItem(QRectF(self.start_point, self.start_point))
-            self.current_temp_item.setPen(QPen(Qt.GlobalColor.red, 1, Qt.PenStyle.DashLine))
+            
+            pen_color = Qt.GlobalColor.blue if self.note_mode else Qt.GlobalColor.red
+            self.current_temp_item.setPen(QPen(pen_color, 1, Qt.PenStyle.DashLine))
+            
             self.addItem(self.current_temp_item)
             self.clearSelection()
             return
@@ -205,6 +209,6 @@ class EditorScene(QGraphicsScene):
             self.current_temp_item = None
             if final_rect.width() > 10 and final_rect.height() > 10:
                 self.interaction_started.emit() 
-                self.item_created.emit(final_rect)
+                self.item_created.emit(final_rect, self.note_mode)
         super().mouseReleaseEvent(event)
 # --- END OF FILE ui/canvas.py ---

@@ -8,7 +8,7 @@ import requests
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QLineEdit, QComboBox, 
                              QGroupBox, QTextEdit, QProgressBar, QMessageBox,
-                             QRadioButton, QButtonGroup, QScrollArea, QSpinBox)
+                             QRadioButton, QButtonGroup, QScrollArea, QSpinBox, QCheckBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QColor
 
@@ -31,12 +31,13 @@ class TelegramWorker(QThread):
     error_signal = pyqtSignal(str)
     stopped_at_signal = pyqtSignal(int)
 
-    def __init__(self, bank_path, config_data, mode="bot", start_idx=1):
+    def __init__(self, bank_path, config_data, mode="bot", start_idx=1, title_msg=None):
         super().__init__()
         self.bank_path = bank_path
         self.cfg = config_data
         self.mode = mode
         self.start_idx = start_idx
+        self.title_msg = title_msg
         self.is_running = True
         self.option_letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
 
@@ -107,6 +108,15 @@ class TelegramWorker(QThread):
         chat_id = self.cfg.get("chat_id")
         base_url = f"https://api.telegram.org/bot{token}"
         
+        # Send optional title message
+        if self.title_msg and self.start_idx == 1:
+            try:
+                r = requests.post(f"{base_url}/sendMessage", data={"chat_id": chat_id, "text": self.title_msg}, timeout=30)
+                r.raise_for_status()
+                self.log_signal.emit("Title message sent.", "#66bb6a")
+            except Exception as e:
+                self.log_signal.emit(f"Error sending title: {e}", "#ff9800")
+        
         for i in range(self.start_idx - 1, total):
             idx = i + 1
             if not self.is_running: 
@@ -114,6 +124,13 @@ class TelegramWorker(QThread):
                 break
                 
             quiz = quizzes[i]
+            
+            # Check for totally empty question and completely ignore it
+            q_text = re.sub(r'^[\d\s\-.)]+', '', quiz.get("question", "")).strip()
+            if not quiz.get("options") and not quiz.get("explanation") and not q_text:
+                self.log_signal.emit(f"Skipping empty text question #{idx}...", "#888")
+                continue
+
             self.progress_signal.emit(idx, total)
             self.log_signal.emit(tr("tg_processing").format(idx), "#4da3ff") 
 
@@ -258,6 +275,13 @@ class TelegramWorker(QThread):
         client = TelegramClient('bb_qbox_session', api_id, api_hash)
         await client.start()
         
+        if self.title_msg and self.start_idx == 1:
+            try:
+                await client.send_message(real_chat_id, self.title_msg)
+                self.log_signal.emit("Title message sent.", "#66bb6a")
+            except Exception as e:
+                self.log_signal.emit(f"Error sending title: {e}", "#ff9800")
+        
         for i in range(self.start_idx - 1, total):
             idx = i + 1
             if not self.is_running: 
@@ -265,6 +289,12 @@ class TelegramWorker(QThread):
                 break
                 
             quiz = quizzes[i]
+            
+            q_text = re.sub(r'^[\d\s\-.)]+', '', quiz.get("question", "")).strip()
+            if not quiz.get("options") and not quiz.get("explanation") and not q_text:
+                self.log_signal.emit(f"Skipping empty text question #{idx}...", "#888")
+                continue
+                
             self.progress_signal.emit(idx, total)
             self.log_signal.emit(tr("tg_processing").format(idx), "#4da3ff")
 
@@ -423,8 +453,18 @@ class TelegramWindow(QMainWindow):
         self.spin_start.setMinimumWidth(80)
         h_bank.addWidget(self.spin_start)
         h_bank.setStretch(0, 1) 
-        
         gb_bank_l.addLayout(h_bank)
+        
+        h_title = QHBoxLayout()
+        self.chk_title = QCheckBox(tr("tg_send_title"))
+        self.txt_title = QLineEdit()
+        self.txt_title.setText(ConfigManager.get_config_value("tg_title_msg", "#المحاضرة_"))
+        self.txt_title.setEnabled(False)
+        self.chk_title.toggled.connect(self.txt_title.setEnabled)
+        h_title.addWidget(self.chk_title)
+        h_title.addWidget(self.txt_title)
+        gb_bank_l.addLayout(h_title)
+        
         layout.addWidget(gb_bank)
 
         # 2. Settings
@@ -554,6 +594,7 @@ class TelegramWindow(QMainWindow):
             "api_hash": self.txt_api_hash.text().strip()
         }
         ConfigManager.set_secret("telegram", data)
+        ConfigManager.set_config_value("tg_title_msg", self.txt_title.text().strip())
         return data
 
     def start_process(self):
@@ -567,6 +608,7 @@ class TelegramWindow(QMainWindow):
         
         mode = "bot" if self.radio_bot.isChecked() else "user"
         start_idx = self.spin_start.value()
+        title_msg = self.txt_title.text().strip() if self.chk_title.isChecked() else None
         
         self.log_view.clear()
         self.log_view.append(f"<span style='color: #888'>Starting in {mode.upper()} mode for bank: {bank} from Q#{start_idx}...</span>")
@@ -575,8 +617,10 @@ class TelegramWindow(QMainWindow):
         self.btn_stop.setEnabled(True)
         self.combo_banks.setEnabled(False)
         self.spin_start.setEnabled(False)
+        self.txt_title.setEnabled(False)
+        self.chk_title.setEnabled(False)
         
-        self.worker = TelegramWorker(bank_path, cfg, mode, start_idx)
+        self.worker = TelegramWorker(bank_path, cfg, mode, start_idx, title_msg)
         self.worker.log_signal.connect(self.log_msg)
         self.worker.progress_signal.connect(self.update_progress)
         self.worker.finished_signal.connect(self.on_finished)
@@ -619,6 +663,8 @@ class TelegramWindow(QMainWindow):
         self.btn_stop.setEnabled(False)
         self.combo_banks.setEnabled(True)
         self.spin_start.setEnabled(True)
+        self.chk_title.setEnabled(True)
+        self.txt_title.setEnabled(self.chk_title.isChecked())
 
     def go_home(self):
         from ui.menu import MainMenu

@@ -76,8 +76,16 @@ class ImageCropperApp(QMainWindow):
         
         self.toolbar.addSeparator()
         self.add_action("Link", tr("link_crops"), self.link_crop_manual, "link")
+        
+        # NOTE TOOL TOGGLE
+        self.act_note_mode = QAction("🟩 " + tr("mark_note"), self)
+        self.act_note_mode.setCheckable(True)
+        sc = ConfigManager.get_config_value("shortcuts", {}).get("mark_note", "")
+        if sc: self.act_note_mode.setShortcut(QKeySequence(sc))
+        self.act_note_mode.toggled.connect(self.toggle_note_mode)
+        self.toolbar.addAction(self.act_note_mode)
+        
         self.add_action("Unlink", tr("unlink_crops"), self.unlink_crop, "unlink")
-        self.add_action("Mark Note", tr("mark_note"), self.toggle_note, "mark_note")
 
         if not self.single_image_mode:
             self.toolbar.addSeparator()
@@ -116,6 +124,13 @@ class ImageCropperApp(QMainWindow):
         self.toolbar.addAction(action)
         return action
 
+    def toggle_note_mode(self, checked):
+        self.scene.note_mode = checked
+        if checked:
+            self.act_note_mode.setText("🟩 " + tr("mark_note") + " (ON)")
+        else:
+            self.act_note_mode.setText("🟩 " + tr("mark_note"))
+
     def set_alignment(self, mode, label):
         self.merge_alignment = mode
         self.btn_align.setText(tr("align_menu") + f" ({label})")
@@ -144,7 +159,10 @@ class ImageCropperApp(QMainWindow):
         if not sel or not isinstance(sel[0], CropItem): return
         item = sel[0]
         data = self.get_current_page_crops()[item.unique_id]
-        gid, ok = QInputDialog.getInt(self, tr("link_crops"), tr("link_prompt_id"), self._calc_auto_id_start(), 1, 99999)
+        
+        # Changed Default ID to current max - 1 (previous question)
+        default_id = max(1, self._calc_auto_id_start() - 1)
+        gid, ok = QInputDialog.getInt(self, tr("link_crops"), tr("link_prompt_id"), default_id, 1, 99999)
         if ok:
             order, ok2 = QInputDialog.getInt(self, tr("link_crops"), tr("link_prompt_order"), 1, 0, 99)
             if ok2:
@@ -157,17 +175,7 @@ class ImageCropperApp(QMainWindow):
         for item in self.scene.selectedItems():
             if isinstance(item, CropItem):
                 c = self.get_current_page_crops()[item.unique_id]
-                c['id'] = None; c['order'] = None
-        self.draw_overlays_only()
-
-    def toggle_note(self):
-        sel = self.scene.selectedItems()
-        if not sel: return
-        self.push_undo()
-        for item in sel:
-            if isinstance(item, CropItem):
-                c = self.get_current_page_crops()[item.unique_id]
-                c['is_note'] = not c.get('is_note', False)
+                c['id'] = None; c['order'] = None; c['is_note'] = False
         self.draw_overlays_only()
 
     def renumber_selected_crop(self):
@@ -193,8 +201,13 @@ class ImageCropperApp(QMainWindow):
 
     def handle_geometry_update(self, idx, rect):
         self.get_current_page_crops()[idx]['rect'] = rect
-    def handle_creation(self, rect):
-        self.get_current_page_crops().append({'rect': rect, 'id': None, 'order': None, 'is_note': False})
+        
+    def handle_creation(self, rect, is_note):
+        # Setup automatic linking correctly for notes
+        prev_id = max(1, self._calc_auto_id_start() - 1)
+        new_id = prev_id if is_note else None
+        
+        self.get_current_page_crops().append({'rect': rect, 'id': new_id, 'order': None, 'is_note': is_note})
         self.get_current_page_crops().sort(key=lambda x: x['rect'].top())
         self.draw_overlays_only()
 

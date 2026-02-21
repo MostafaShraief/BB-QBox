@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QListWidget, QSplitter, 
                              QScrollArea, QRadioButton, QButtonGroup, QFrame,
                              QComboBox, QMessageBox, QCheckBox, QLineEdit,
-                             QTextEdit, QFileDialog, QScrollBar)
+                             QTextEdit, QFileDialog)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap, QFont
 from core.config import ConfigManager
@@ -62,6 +62,7 @@ class QuestionViewer(QMainWindow):
             self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         
         self.current_bank_data = []
+        self.valid_indices = [] # Map UI index -> Actual JSON index
         self.current_bank_path = ""
         self.current_q_index = -1
         self.edit_mode = False
@@ -372,43 +373,60 @@ class QuestionViewer(QMainWindow):
         if os.path.exists(p):
             with open(p, 'r', encoding='utf-8') as f:
                 self.current_bank_data = json.load(f)
-            self.refresh_list(0)
+            self.refresh_list(-1)
         else:
             self.current_bank_data = []
             self.list_widget.clear()
 
-    def refresh_list(self, select_index=0):
+    def refresh_list(self, current_actual_index=-1):
         self.list_widget.blockSignals(True)
         self.list_widget.clear()
+        self.valid_indices = []
+        
         for i, q in enumerate(self.current_bank_data):
+            q_text = re.sub(r'^[\d\s\-.)]+', '', q.get("question", "")).strip()
+            # If totally empty from text extractor, we just hide it from Viewer.
+            if not q.get("options") and not q.get("explanation") and not q_text:
+                continue
+                
+            self.valid_indices.append(i)
             raw_txt = q.get('question','?')
             clean_txt = re.sub(r'^\d+\s*[-.)]\s*', '', raw_txt).strip()
             preview = clean_txt[:30].replace('\n', ' ')
             self.list_widget.addItem(f"{i+1}. {preview}...")
+            
         self.list_widget.blockSignals(False)
         
-        if self.current_bank_data:
-            idx_to_select = min(select_index, len(self.current_bank_data) - 1)
-            self.list_widget.setCurrentRow(idx_to_select)
-            self.load_question(idx_to_select)
+        if self.valid_indices:
+            list_idx_to_select = 0
+            if current_actual_index >= 0:
+                try:
+                    list_idx_to_select = self.valid_indices.index(current_actual_index)
+                except ValueError:
+                    list_idx_to_select = min(0, len(self.valid_indices)-1)
+                    
+            self.list_widget.setCurrentRow(list_idx_to_select)
+            self.load_question(list_idx_to_select)
 
-    def load_question(self, index):
-        if index < 0 or index >= len(self.current_bank_data): return
-        self.current_q_index = index
+    def load_question(self, list_index):
+        if list_index < 0 or list_index >= len(self.valid_indices): return
+        actual_index = self.valid_indices[list_index]
+        self.current_q_index = actual_index
+        
         self.edit_mode = False
         self.update_ui_state()
         
-        q = self.current_bank_data[index]
+        q = self.current_bank_data[actual_index]
         is_ar = ConfigManager.get_language() == "ar"
         
         if is_ar:
-            self.lbl_q_num.setText(f"سؤال رقم {index+1}")
+            self.lbl_q_num.setText(f"سؤال رقم {actual_index+1}")
             self.lbl_q_num.setAlignment(Qt.AlignmentFlag.AlignRight)
         else:
-            self.lbl_q_num.setText(f"Question #{index+1}")
+            self.lbl_q_num.setText(f"Question #{actual_index+1}")
             self.lbl_q_num.setAlignment(Qt.AlignmentFlag.AlignLeft)
         
-        img_p = os.path.join(self.current_bank_path, "images", f"{index+1}.jpg")
+        img_p = os.path.join(self.current_bank_path, "images", f"{actual_index+1}.jpg")
         if os.path.exists(img_p):
             pix = QPixmap(img_p)
             if pix.width() > 900: pix = pix.scaledToWidth(900, Qt.TransformationMode.SmoothTransformation)
@@ -465,7 +483,8 @@ class QuestionViewer(QMainWindow):
             self.lbl_ans_status.setText("تعديل الشرح:" if ConfigManager.get_language() == "ar" else "Editing Explanation:")
             self.lbl_ans_status.setStyleSheet("color: #4da3ff;")
         else:
-            self.load_question(self.current_q_index)
+            list_idx = self.valid_indices.index(self.current_q_index)
+            self.load_question(list_idx)
             return
 
         self.update_ui_state()
@@ -596,7 +615,10 @@ class QuestionViewer(QMainWindow):
         if f:
             dest = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}.jpg")
             if not os.path.exists(os.path.dirname(dest)): os.makedirs(os.path.dirname(dest))
-            shutil.copy(f, dest); self.load_question(self.current_q_index)
+            shutil.copy(f, dest); 
+            
+            list_idx = self.valid_indices.index(self.current_q_index)
+            self.load_question(list_idx)
 
     def open_cropper_for_image(self):
         from ui.window import ImageCropperApp

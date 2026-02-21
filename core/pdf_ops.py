@@ -40,15 +40,8 @@ def analyze_pdf_layout(doc, page_num):
         text = text.strip()
         if not text or y0 < header_margin or y0 > footer_margin: continue
         
-        # Check if stop keyword is at the start of the text block (ignoring bullet numbers)
-        is_stop = False
-        cleaned_text = re.sub(r'^[\d\-.)\s]+', '', text)
-        for k in stop_keywords:
-            if cleaned_text.startswith(k):
-                is_stop = True
-                break
-                
-        if is_stop:
+        # Original simple stop check
+        if any(k in text for k in stop_keywords):
             if curr_rect:
                 detected_rects.append(curr_rect)
                 curr_rect = None
@@ -67,15 +60,9 @@ def analyze_pdf_layout(doc, page_num):
 
     final_qrects = []
     padding = 5
-    page_w = page.rect.width
     
     for r in detected_rects:
         rx0, ry0, rx1, ry1 = r
-        # Extend horizontally to match fully aligned grid options (e.g. side-by-side)
-        margin_x = 20
-        rx0 = min(rx0, margin_x)
-        rx1 = max(rx1, page_w - margin_x)
-        
         ui_x = rx0 * PDF_ZOOM
         ui_y = ry0 * PDF_ZOOM
         ui_w = (rx1 - rx0) * PDF_ZOOM
