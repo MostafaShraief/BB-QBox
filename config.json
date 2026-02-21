@@ -11,7 +11,8 @@
         "شرح",
         "تنويه",
         "note",
-        "hint"
+        "hint",
+        "التصحيح"
     ],
     "stop_chars": [
         ":",
@@ -37,11 +38,11 @@
     },
     "windows": {
         "menu": {
-            "w": 654,
-            "h": 606,
-            "x": 434,
-            "y": 76,
-            "maximized": false
+            "w": 1536,
+            "h": 793,
+            "x": 0,
+            "y": -7,
+            "maximized": true
         },
         "extractor": {
             "w": 650,
@@ -63,6 +64,19 @@
             "x": 0,
             "y": -7,
             "maximized": true
+        },
+        "telegram": {
+            "w": 1536,
+            "h": 793,
+            "x": 0,
+            "y": -7,
+            "maximized": true
         }
+    },
+    "telegram": {
+        "bot_token": "8515343606:AAG_HzrLVfWQLNUonHm6pZmnU3uaBFtG08M",
+        "chat_id": "-1003770809168",
+        "api_id": "",
+        "api_hash": ""
     }
 }
