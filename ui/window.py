@@ -27,12 +27,12 @@ class ImageCropperApp(QMainWindow):
         else:
             self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
 
-        self.file_list = []
+        self.file_list =[]
         self.current_index = 0
         self.merge_alignment = "right"
         self.pages_crops = {} 
-        self.undo_stack = []
-        self.redo_stack = []
+        self.undo_stack =[]
+        self.redo_stack =[]
         self.single_image_mode = single_image_mode
 
         ConfigManager.load_window_state("cropper", self)
@@ -51,7 +51,7 @@ class ImageCropperApp(QMainWindow):
         event.ignore()
 
     def dropEvent(self, event):
-        paths = [url.toLocalFile() for url in event.mimeData().urls()
+        paths =[url.toLocalFile() for url in event.mimeData().urls()
                  if url.toLocalFile().lower().endswith(('.pdf', '.png', '.jpg', '.jpeg'))]
         if paths:
             self.load_files(paths)
@@ -77,7 +77,7 @@ class ImageCropperApp(QMainWindow):
         if not self.single_image_mode:
             self.btn_align = QPushButton(tr("align_menu") + f" ({tr('align_right')})")
             menu = QMenu(self)
-            for k in ["right", "center", "left"]:
+            for k in["right", "center", "left"]:
                 menu.addAction(tr(f"align_{k}"), lambda m=k: self.set_alignment(m, tr(f"align_{m}")))
             self.btn_align.setMenu(menu)
             self.toolbar.addWidget(self.btn_align)
@@ -93,7 +93,6 @@ class ImageCropperApp(QMainWindow):
         self.toolbar.addSeparator()
         self.add_action("Link", tr("link_crops"), self.link_crop_manual, "link")
         
-        # NOTE TOOL TOGGLE
         self.act_note_mode = QAction("🟩 " + tr("mark_note"), self)
         self.act_note_mode.setCheckable(True)
         sc = ConfigManager.get_config_value("shortcuts", {}).get("mark_note", "")
@@ -158,7 +157,7 @@ class ImageCropperApp(QMainWindow):
         self.close()
 
     def get_current_page_crops(self):
-        if self.current_index not in self.pages_crops: self.pages_crops[self.current_index] = []
+        if self.current_index not in self.pages_crops: self.pages_crops[self.current_index] =[]
         return self.pages_crops[self.current_index]
 
     def _calc_auto_id_start(self):
@@ -176,7 +175,6 @@ class ImageCropperApp(QMainWindow):
         item = sel[0]
         data = self.get_current_page_crops()[item.unique_id]
         
-        # Changed Default ID to current max - 1 (previous question)
         default_id = max(1, self._calc_auto_id_start() - 1)
         gid, ok = QInputDialog.getInt(self, tr("link_crops"), tr("link_prompt_id"), default_id, 1, 99999)
         if ok:
@@ -219,11 +217,7 @@ class ImageCropperApp(QMainWindow):
         self.get_current_page_crops()[idx]['rect'] = rect
         
     def handle_creation(self, rect, is_note):
-        # Setup automatic linking correctly for notes
-        prev_id = max(1, self._calc_auto_id_start() - 1)
-        new_id = prev_id if is_note else None
-        
-        self.get_current_page_crops().append({'rect': rect, 'id': new_id, 'order': None, 'is_note': is_note})
+        self.get_current_page_crops().append({'rect': rect, 'id': None, 'order': None, 'is_note': is_note})
         self.get_current_page_crops().sort(key=lambda x: x['rect'].top())
         self.draw_overlays_only()
 
@@ -231,15 +225,25 @@ class ImageCropperApp(QMainWindow):
         self.scene.clearSelection()
         for i in self.scene.items(): 
             if isinstance(i, CropItem): self.scene.removeItem(i)
+        
         crops = self.get_current_page_crops()
+        crops.sort(key=lambda x: x['rect'].top())
         cnt = self._calc_auto_id_start()
+        
         for i, d in enumerate(crops):
             is_note = d.get('is_note', False)
-            lbl = f"{d['id']}_{d['order']}" if d.get('id') else str(cnt)
+            if not d.get('id'):
+                display_id = max(1, cnt - 1) if is_note else cnt
+            else:
+                display_id = d['id']
+                
+            lbl = f"{display_id}_{d.get('order', '')}" if d.get('order') else str(display_id)
             if is_note:
                 lbl += " (N)"
+                
             if not d.get('id') and not is_note: 
                 cnt += 1
+                
             self.scene.addItem(CropItem(d['rect'], self.scene, i, lbl, bool(d.get('id')), is_note))
 
     def auto_detect_current_page(self):
@@ -248,8 +252,13 @@ class ImageCropperApp(QMainWindow):
         f = self.file_list[self.current_index]
         if f[0] == 'pdf':
             try:
-                r = analyze_pdf_layout(f[1], f[2])
-                self.pages_crops[self.current_index] = [{'rect':x, 'id':None, 'order':None, 'is_note': False} for x in r]
+                is_note = self.scene.note_mode
+                r = analyze_pdf_layout(f[1], f[2], detect_notes_only=is_note)
+                if is_note:
+                    new_crops =[{'rect': x, 'id': None, 'order': None, 'is_note': True} for x in r]
+                    self.pages_crops[self.current_index].extend(new_crops)
+                else:
+                    self.pages_crops[self.current_index] =[{'rect': x, 'id': None, 'order': None, 'is_note': False} for x in r]
                 self.draw_overlays_only()
             except Exception as e:
                 logging.warning("Auto-detect failed: %s", e)
@@ -265,12 +274,19 @@ class ImageCropperApp(QMainWindow):
                 pd = QProgressDialog(tr("processing"), "Cancel", 0, e-s+1, self)
                 pd.setWindowModality(Qt.WindowModality.WindowModal)
                 cnt = 0
+                is_note = self.scene.note_mode
                 for i in range(s-1, e):
                     if pd.wasCanceled(): break
                     f = self.file_list[i]
                     if f[0] == 'pdf':
-                        r = analyze_pdf_layout(f[1], f[2])
-                        self.pages_crops[i] = [{'rect':x, 'id':None, 'order':None, 'is_note': False} for x in r]
+                        r = analyze_pdf_layout(f[1], f[2], detect_notes_only=is_note)
+                        if is_note:
+                            new_crops =[{'rect': x, 'id': None, 'order': None, 'is_note': True} for x in r]
+                            if i not in self.pages_crops:
+                                self.pages_crops[i] = []
+                            self.pages_crops[i].extend(new_crops)
+                        else:
+                            self.pages_crops[i] =[{'rect':x, 'id':None, 'order':None, 'is_note': False} for x in r]
                     cnt += 1; pd.setValue(cnt); QApplication.processEvents()
                 if (s-1) <= self.current_index < e: self.draw_overlays_only()
             except Exception as e:
@@ -300,7 +316,7 @@ class ImageCropperApp(QMainWindow):
         if f: self.load_files(f)
         
     def load_files(self, paths):
-        self.file_list = []
+        self.file_list =[]
         for p in sorted(paths):
             if p.lower().endswith('.pdf'):
                 d = fitz.open(p)

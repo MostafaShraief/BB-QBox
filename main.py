@@ -8,7 +8,8 @@ from ui.menu import MainMenu
 def ensure_config():
     defaults = {
         "answer_keywords": ["الحل", "الجواب", "الاجابة", "answer"],
-        "note_keywords": ["ملاحظة", "توضيح", "شرح", "تنويه", "note", "hint"],
+        "note_keywords":["ملاحظة", "مالحظة", "توضيح", "شرح", "تنويه", "note", "hint"],
+        "note_colors":["#7030A0", "#1C6194", "#7030a0", "#1c6194"],
         "stop_chars": [":", "-", "."],
         "language": "ar",
         "shortcuts": {

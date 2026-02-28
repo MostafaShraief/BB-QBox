@@ -40,7 +40,7 @@ class TelegramWorker(QThread):
         self.start_idx = start_idx
         self.title_msg = title_msg
         self._stop_event = threading.Event()
-        self.option_letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
+        self.option_letters =['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
 
     @property
     def is_running(self):
@@ -50,10 +50,10 @@ class TelegramWorker(QThread):
         self._stop_event.set()
 
     def get_media_files(self, folder, idx):
-        found = []
+        found =[]
         exts = ['.jpg', '.png', '.gif']
         img_dir = os.path.join(folder, "images")
-        if not os.path.exists(img_dir): return []
+        if not os.path.exists(img_dir): return[]
         
         # Base image
         for ext in exts:
@@ -162,7 +162,7 @@ class TelegramWorker(QThread):
                         else:
                             files_dict = {}
                             media_arr = []
-                            file_handles = []
+                            file_handles =[]
                             try:
                                 for j, p in enumerate(media_files):
                                     fh = open(p, 'rb')
@@ -179,18 +179,18 @@ class TelegramWorker(QThread):
                                                   data={'chat_id': chat_id, 'media': json.dumps(media_arr)}, 
                                                   files=files_dict, timeout=60)
                                 r.raise_for_status()
-                                last_msg_id = r.json().get('result', [])[-1].get('message_id')
+                                last_msg_id = r.json().get('result',[])[-1].get('message_id')
                             finally:
                                 for fh in file_handles:
                                     fh.close()
 
                     # 2. Send Poll
-                    options = quiz.get("options", [])
+                    options = quiz.get("options",[])
                     if len(options) < 2:
-                        options = ["A", "B", "C", "D", "E"][:max(2, len(quiz.get("correct_options", [0])) + 1)]
+                        options =["A", "B", "C", "D", "E"][:max(2, len(quiz.get("correct_options", [0])) + 1)]
                         if len(options) < 2: options = ["A", "B"]
                         
-                    correct_opts = quiz.get("correct_options", [])
+                    correct_opts = quiz.get("correct_options",[])
                     if not correct_opts: correct_opts = [0]
                     
                     expl = quiz.get("explanation", "").strip()
@@ -206,9 +206,8 @@ class TelegramWorker(QThread):
                     }
                     if is_quiz:
                         poll_data["correct_option_id"] = correct_opts[0]
-                        if expl:
-                            poll_data["explanation"] = self.escape_markdown(expl)
-                            poll_data["explanation_parse_mode"] = "MarkdownV2"
+                        # We specifically omit inserting "explanation" into the poll_data directly 
+                        # to ensure the note only displays via the spoiler message
                     
                     if last_msg_id: poll_data["reply_to_message_id"] = last_msg_id
 
@@ -220,7 +219,7 @@ class TelegramWorker(QThread):
                     # 3. Spoiler and Notes Image
                     note_media = self.get_note_media_file(self.bank_path, idx)
                     if (not is_quiz) or (is_quiz and expl) or note_media:
-                        correct_syms = [self.option_letters[k] for k in correct_opts if 0 <= k < 10]
+                        correct_syms =[self.option_letters[k] for k in correct_opts if 0 <= k < 10]
                         txt = f"✅ الجواب: {', '.join(correct_syms)}"
                         if expl: txt += f"\n💡 {expl}"
                         spoiler = f"||{self.escape_markdown(txt)}||"
@@ -321,15 +320,15 @@ class TelegramWorker(QThread):
                             reply_to = msg[-1].id if isinstance(msg, list) else msg.id
 
                         # 2. Poll
-                        options = quiz.get("options", [])
+                        options = quiz.get("options",[])
                         if len(options) < 2:
                             options = ["A", "B", "C", "D", "E"][:max(2, len(quiz.get("correct_options", [0])) + 1)]
                             if len(options) < 2: options = ["A", "B"]
 
-                        correct_opts = quiz.get("correct_options", [])
+                        correct_opts = quiz.get("correct_options",[])
                         if not correct_opts: correct_opts = [0]
 
-                        answers = [PollAnswer(TextWithEntities(str(o), []), bytes([k])) for k, o in enumerate(options)]
+                        answers =[PollAnswer(TextWithEntities(str(o), []), bytes([k])) for k, o in enumerate(options)]
                         correct = [bytes([k]) for k in correct_opts]
                         is_quiz = len(correct) == 1
                         
@@ -337,7 +336,7 @@ class TelegramWorker(QThread):
                         
                         poll = Poll(
                             id=0,
-                            question=TextWithEntities(quiz.get("question", "?") or "?", []),
+                            question=TextWithEntities(quiz.get("question", "?") or "?",[]),
                             answers=answers,
                             closed=False,
                             public_voters=False,
@@ -346,23 +345,20 @@ class TelegramWorker(QThread):
                             close_period=None, close_date=None
                         )
                         
-                        sol = expl if (is_quiz and expl) else None
-                        sol_ent = [] if sol else None
-
                         poll_msg = await client.send_message(
                             real_chat_id,
                             file=InputMediaPoll(poll=poll, correct_answers=correct if is_quiz else None, 
-                                                solution=sol, solution_entities=sol_ent),
+                                                solution=None, solution_entities=None),
                             reply_to=reply_to
                         )
                         self.log_signal.emit("Poll sent.", "#66bb6a")
 
                         # 3. Spoiler
                         note_media = self.get_note_media_file(self.bank_path, idx)
-                        if (not is_quiz) or (is_quiz and sol) or note_media:
-                            correct_syms = [self.option_letters[k] for k in correct_opts if 0 <= k < 10]
+                        if (not is_quiz) or (is_quiz and expl) or note_media:
+                            correct_syms =[self.option_letters[k] for k in correct_opts if 0 <= k < 10]
                             txt = f"✅ Answer: {', '.join(correct_syms)}"
-                            if sol: txt += f"\n💡 Note: {sol}"
+                            if expl: txt += f"\n💡 Note: {expl}"
                             
                             if note_media:
                                 await client.send_file(real_chat_id, note_media, caption=f"||{txt}||", parse_mode='md', reply_to=poll_msg.id)
@@ -617,7 +613,6 @@ class TelegramWindow(QMainWindow):
         
         mode = "bot" if self.radio_bot.isChecked() else "user"
 
-        # Validate credentials before starting
         if mode == "bot":
             if not cfg.get("bot_token") or not cfg.get("chat_id"):
                 QMessageBox.warning(self, "Error", tr("tg_err_no_bank") if False else

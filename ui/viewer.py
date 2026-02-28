@@ -7,9 +7,9 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QListWidget, QSplitter, 
                              QScrollArea, QRadioButton, QButtonGroup, QFrame,
                              QComboBox, QMessageBox, QCheckBox, QLineEdit,
-                             QTextEdit, QFileDialog)
+                             QTextEdit, QFileDialog, QMenu, QApplication)
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtGui import QPixmap, QKeySequence, QShortcut
 from core.config import ConfigManager
 from ui.common import tr
 
@@ -62,7 +62,7 @@ class QuestionViewer(QMainWindow):
             self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         
         self.current_bank_data = []
-        self.valid_indices = [] # Map UI index -> Actual JSON index
+        self.valid_indices = [] 
         self.current_bank_path = ""
         self.current_q_index = -1
         self.edit_mode = False
@@ -75,11 +75,35 @@ class QuestionViewer(QMainWindow):
         ConfigManager.load_window_state("viewer", self)
         self.apply_styles()
         self.init_ui()
+        self.setup_shortcuts()
         self.scan_banks_folder()
 
     def closeEvent(self, event):
         ConfigManager.save_window_state("viewer", self)
         super().closeEvent(event)
+
+    def setup_shortcuts(self):
+        self.short_left = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
+        self.short_left.activated.connect(self.nav_prev)
+        
+        self.short_right = QShortcut(QKeySequence(Qt.Key.Key_Right), self)
+        self.short_right.activated.connect(self.nav_next)
+        
+        self.short_space = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self.short_space.activated.connect(self.reveal_answer)
+
+    def set_nav_shortcuts_enabled(self, enabled):
+        self.short_left.setEnabled(enabled)
+        self.short_right.setEnabled(enabled)
+        self.short_space.setEnabled(enabled)
+
+    def nav_prev(self):
+        if self.list_widget.currentRow() > 0:
+            self.list_widget.setCurrentRow(self.list_widget.currentRow() - 1)
+
+    def nav_next(self):
+        if self.list_widget.currentRow() < self.list_widget.count() - 1:
+            self.list_widget.setCurrentRow(self.list_widget.currentRow() + 1)
 
     def apply_styles(self):
         self.setStyleSheet("""
@@ -177,6 +201,7 @@ class QuestionViewer(QMainWindow):
         header_layout.addWidget(lbl_bank)
         
         self.combo_banks = QComboBox()
+        self.combo_banks.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.combo_banks.setMinimumWidth(250)
         self.combo_banks.currentIndexChanged.connect(self.on_bank_selected)
         header_layout.addWidget(self.combo_banks)
@@ -184,11 +209,13 @@ class QuestionViewer(QMainWindow):
         header_layout.addStretch()
         
         self.chk_always_show = QCheckBox(tr("view_always_show"))
+        self.chk_always_show.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.chk_always_show.setChecked(True)
         header_layout.addWidget(self.chk_always_show)
 
         btn_home = QPushButton("🏠 " + tr("home"))
         btn_home.setStyleSheet("background-color: #00796b; border: none; font-weight: bold;")
+        btn_home.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_home.clicked.connect(self.go_home)
         header_layout.addWidget(btn_home)
         
@@ -202,10 +229,13 @@ class QuestionViewer(QMainWindow):
         self.list_widget = QListWidget()
         self.list_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.list_widget.currentRowChanged.connect(self.load_question)
+        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list_widget.customContextMenuRequested.connect(self.show_context_menu)
         splitter.addWidget(self.list_widget)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.scroll_area.setStyleSheet("QScrollArea { border: none; background: #1e1e1e; }")
         
         content_container = QWidget()
@@ -228,11 +258,13 @@ class QuestionViewer(QMainWindow):
         head.addStretch()
         
         self.btn_edit = QPushButton("✏️ " + tr("edit_btn"))
+        self.btn_edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_edit.clicked.connect(self.toggle_edit_mode)
         head.addWidget(self.btn_edit)
         
         self.btn_delete = QPushButton("🗑️ " + tr("delete"))
         self.btn_delete.setObjectName("DeleteBtn")
+        self.btn_delete.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_delete.setFixedWidth(120) 
         self.btn_delete.clicked.connect(self.delete_current_question)
         head.addWidget(self.btn_delete)
@@ -252,15 +284,24 @@ class QuestionViewer(QMainWindow):
         img_btn_style = "background-color: #263238; border: 1px solid #37474f; font-weight: bold;"
         self.btn_rep_img = QPushButton() 
         self.btn_rep_img.setStyleSheet(img_btn_style)
+        self.btn_rep_img.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_rep_img.clicked.connect(self.replace_image)
         
         crop_txt = "✂️ " + ("قص الصورة" if ConfigManager.get_language() == "ar" else "Crop Image")
         self.btn_crop_img = QPushButton(crop_txt)
         self.btn_crop_img.setStyleSheet(img_btn_style)
+        self.btn_crop_img.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_crop_img.clicked.connect(self.open_cropper_for_image)
+
+        self.btn_del_img = QPushButton("🗑️")
+        self.btn_del_img.setFixedSize(38, 38)
+        self.btn_del_img.setStyleSheet("background-color: #3e2020; border: 1px solid #552222; color: #ff6b6b; border-radius: 6px; font-weight: bold;")
+        self.btn_del_img.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_del_img.clicked.connect(self.delete_image)
         
         it_lay.addWidget(self.btn_rep_img)
         it_lay.addWidget(self.btn_crop_img)
+        it_lay.addWidget(self.btn_del_img)
         it_lay.addStretch()
         self.img_tools.hide()
         card_v.addWidget(self.img_tools)
@@ -296,6 +337,7 @@ class QuestionViewer(QMainWindow):
         add_opt_txt = "➕ " + ("إضافة خيار" if ConfigManager.get_language() == "ar" else "Add Option")
         self.btn_add_opt = QPushButton(add_opt_txt)
         self.btn_add_opt.setStyleSheet("background-color: #333; border: 1px dashed #666; color: #aaa; padding: 12px;")
+        self.btn_add_opt.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_add_opt.clicked.connect(lambda: self.add_option_row("", False))
         self.btn_add_opt.hide()
         card_v.addWidget(self.btn_add_opt)
@@ -322,6 +364,34 @@ class QuestionViewer(QMainWindow):
         self.note_img_label.setStyleSheet("background: #000; border-radius: 6px; border: 1px solid #444; padding: 5px;")
         self.note_img_label.hide()
         
+        # Tools for note image directly
+        self.note_img_tools = QWidget()
+        self.note_img_tools.setStyleSheet("background: transparent; border: none;")
+        nit_lay = QHBoxLayout(self.note_img_tools)
+        nit_lay.setContentsMargins(0,0,0,0)
+        
+        self.btn_rep_note_img = QPushButton() 
+        self.btn_rep_note_img.setStyleSheet(img_btn_style)
+        self.btn_rep_note_img.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_rep_note_img.clicked.connect(self.replace_note_image)
+        
+        self.btn_crop_note_img = QPushButton(crop_txt)
+        self.btn_crop_note_img.setStyleSheet(img_btn_style)
+        self.btn_crop_note_img.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_crop_note_img.clicked.connect(self.open_cropper_for_note_image)
+
+        self.btn_del_note_img = QPushButton("🗑️")
+        self.btn_del_note_img.setFixedSize(38, 38)
+        self.btn_del_note_img.setStyleSheet("background-color: #3e2020; border: 1px solid #552222; color: #ff6b6b; border-radius: 6px; font-weight: bold;")
+        self.btn_del_note_img.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_del_note_img.clicked.connect(self.delete_note_image)
+        
+        nit_lay.addWidget(self.btn_rep_note_img)
+        nit_lay.addWidget(self.btn_crop_note_img)
+        nit_lay.addWidget(self.btn_del_note_img)
+        nit_lay.addStretch()
+        self.note_img_tools.hide()
+        
         self.edit_expl = QTextEdit()
         self.edit_expl.setMinimumHeight(100)
         self.edit_expl.hide()
@@ -329,6 +399,7 @@ class QuestionViewer(QMainWindow):
         ans_v.addWidget(self.lbl_ans_status)
         ans_v.addWidget(self.lbl_expl)
         ans_v.addWidget(self.note_img_label)
+        ans_v.addWidget(self.note_img_tools)
         ans_v.addWidget(self.edit_expl)
         self.ans_box.hide()
         self.content_layout.addWidget(self.ans_box)
@@ -339,12 +410,14 @@ class QuestionViewer(QMainWindow):
         
         self.btn_reveal = QPushButton("👁️ " + tr("view_show_ans"))
         self.btn_reveal.setObjectName("PrimaryBtn")
+        self.btn_reveal.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_reveal.setMinimumHeight(55)
         self.btn_reveal.clicked.connect(self.reveal_answer)
         h_actions.addWidget(self.btn_reveal)
 
         self.btn_save = QPushButton("💾 " + tr("save_changes"))
         self.btn_save.setObjectName("PrimaryBtn")
+        self.btn_save.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_save.setMinimumHeight(55)
         self.btn_save.hide()
         self.btn_save.clicked.connect(self.save_changes)
@@ -375,14 +448,52 @@ class QuestionViewer(QMainWindow):
                 self.current_bank_data = json.load(f)
             self.refresh_list(-1)
         else:
-            self.current_bank_data = []
+            self.current_bank_data =[]
             self.list_widget.clear()
+
+    def show_context_menu(self, pos):
+        item = self.list_widget.itemAt(pos)
+        if not item: return
+        
+        menu = QMenu(self)
+        is_ar = ConfigManager.get_language() == "ar"
+        
+        act_edit = menu.addAction("✏️ " + tr("edit_btn"))
+        act_del = menu.addAction("🗑️ " + tr("delete"))
+        menu.addSeparator()
+        act_ins_before = menu.addAction("⬆️ " + ("إدراج سؤال قبل" if is_ar else "Insert question before"))
+        act_ins_after = menu.addAction("⬇️ " + ("إدراج سؤال بعد" if is_ar else "Insert question after"))
+        menu.addSeparator()
+        act_inc = menu.addAction("+1 " + ("زيادة ترقيم األسئلة من هنا" if is_ar else "Increase numbering from here"))
+        act_dec = menu.addAction("-1 " + ("إنقاص ترقيم األسئلة من هنا" if is_ar else "Decrease numbering from here"))
+        
+        action = menu.exec(self.list_widget.viewport().mapToGlobal(pos))
+        
+        # Ensure we work on the clicked item's index, not necessarily the 'current' selected one if they differ
+        clicked_index = self.list_widget.row(item)
+        if clicked_index != -1:
+            self.list_widget.setCurrentRow(clicked_index)
+            
+        if action == act_edit:
+            if not self.edit_mode:
+                self.toggle_edit_mode()
+        elif action == act_del:
+            self.delete_current_question()
+        elif action == act_ins_before:
+            self.insert_question(after=False)
+        elif action == act_ins_after:
+            self.insert_question(after=True)
+        elif action == act_inc:
+            self.manual_renumber(1)
+        elif action == act_dec:
+            self.manual_renumber(-1)
 
     def refresh_list(self, current_actual_index=-1):
         self.list_widget.blockSignals(True)
         self.list_widget.clear()
         self.valid_indices = []
         
+        visible_count = 1
         for i, q in enumerate(self.current_bank_data):
             q_text = re.sub(r'^[\d\s\-.)]+', '', q.get("question", "")).strip()
             # If totally empty from text extractor, we just hide it from Viewer.
@@ -393,7 +504,8 @@ class QuestionViewer(QMainWindow):
             raw_txt = q.get('question','?')
             clean_txt = re.sub(r'^\d+\s*[-.)]\s*', '', raw_txt).strip()
             preview = clean_txt[:30].replace('\n', ' ')
-            self.list_widget.addItem(f"{i+1}. {preview}...")
+            self.list_widget.addItem(f"{visible_count}. {preview}...")
+            visible_count += 1
             
         self.list_widget.blockSignals(False)
         
@@ -415,17 +527,22 @@ class QuestionViewer(QMainWindow):
         
         self.edit_mode = False
         self.update_ui_state()
+        self.set_nav_shortcuts_enabled(True)
         
         q = self.current_bank_data[actual_index]
         is_ar = ConfigManager.get_language() == "ar"
         
+        # Use visible list_index + 1 to match the sidebar counter
+        display_num = list_index + 1
+        
         if is_ar:
-            self.lbl_q_num.setText(f"سؤال رقم {actual_index+1}")
+            self.lbl_q_num.setText(f"سؤال رقم {display_num}")
             self.lbl_q_num.setAlignment(Qt.AlignmentFlag.AlignRight)
         else:
-            self.lbl_q_num.setText(f"Question #{actual_index+1}")
+            self.lbl_q_num.setText(f"Question #{display_num}")
             self.lbl_q_num.setAlignment(Qt.AlignmentFlag.AlignLeft)
         
+        # ... (rest of the method remains the same)
         img_p = os.path.join(self.current_bank_path, "images", f"{actual_index+1}.jpg")
         if os.path.exists(img_p):
             pix = QPixmap(img_p)
@@ -433,21 +550,37 @@ class QuestionViewer(QMainWindow):
             self.img_label.setPixmap(pix)
             self.img_label.show()
             self.btn_rep_img.setText("🔄 " + (tr("replace_img") if tr("replace_img") != "replace_img" else "Replace Image"))
+            self.btn_del_img.show()
         else:
             self.img_label.clear()
             self.img_label.hide()
             self.btn_rep_img.setText("➕ " + ("إضافة صورة" if is_ar else "Add Image"))
-        
+            self.btn_del_img.hide()
+
+        note_img_p = os.path.join(self.current_bank_path, "images", f"{actual_index+1}_note.jpg")
+        if os.path.exists(note_img_p):
+            pix = QPixmap(note_img_p)
+            if pix.width() > 900: pix = pix.scaledToWidth(900, Qt.TransformationMode.SmoothTransformation)
+            self.note_img_label.setPixmap(pix)
+            self.note_img_label.show()
+            self.btn_rep_note_img.setText("🔄 " + (tr("replace_img") if tr("replace_img") != "replace_img" else "Replace Image"))
+            self.btn_del_note_img.show()
+        else:
+            self.note_img_label.hide()
+            self.btn_rep_note_img.setText("➕ " + ("إضافة صورة ملاحظة" if is_ar else "Add Note Image"))
+            self.btn_del_note_img.hide()
+            
         self.q_text_lbl.setText(q.get("question", ""))
         if is_ar: self.q_text_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         
         for b in self.opt_group_view.buttons():
             self.opt_view_layout.removeWidget(b); b.deleteLater()
         
-        for i, opt in enumerate(q.get("options", [])):
+        for i, opt in enumerate(q.get("options",[])):
             rb = QRadioButton(str(opt))
             rb.setProperty("idx", i)
             rb.setStyleSheet("font-size: 16px; padding: 6px;")
+            rb.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             self.opt_view_layout.addWidget(rb)
             self.opt_group_view.addButton(rb)
 
@@ -457,9 +590,116 @@ class QuestionViewer(QMainWindow):
         
         QTimer.singleShot(0, lambda: self.scroll_area.verticalScrollBar().setValue(0))
 
+    def _validate_numbering(self, start_idx):
+        """Checks if questions from start_idx onwards have valid numbering formats based on JSON string ONLY."""
+        for i in range(start_idx, len(self.current_bank_data)):
+            q = self.current_bank_data[i]
+            q_text = q.get("question", "").strip()
+            # If text is empty, it's fine, we just skip it (as per prompt "if empty... no problem")
+            if not q_text:
+                continue
+            
+            # Match strict number at start of string
+            match = re.match(r'^(\d+)(\s*[-.)]\s*)', q_text)
+            if not match:
+                # Warning and abort
+                QMessageBox.warning(self, "Format Error", 
+                    f"Cannot adjust numbering automatically.\n"
+                    f"Question at index {i+1} does not start with a recognized number format:\n\n"
+                    f"'{q_text[:50]}...'\n\n"
+                    "Please fix this question manually before using auto-renumbering.")
+                self.list_widget.setCurrentRow(i)
+                return False
+        return True
+
+    def _apply_numbering_shift(self, start_idx, delta):
+        """Shifts numbers in JSON strings by delta for questions starting at start_idx."""
+        for i in range(start_idx, len(self.current_bank_data)):
+            q = self.current_bank_data[i]
+            q_text = q.get("question", "").strip()
+            if not q_text: continue
+            
+            match = re.match(r'^(\d+)(\s*[-.)]\s*)(.*)', q_text, re.DOTALL)
+            if match:
+                old_num = int(match.group(1))
+                new_num = old_num + delta
+                # We enforce minimum of 0 to avoid negative numbers if strange things happen
+                if new_num < 0: new_num = 0
+                
+                separator = match.group(2)
+                content = match.group(3)
+                q["question"] = f"{new_num}{separator}{content}"
+
+    def manual_renumber(self, delta):
+        # We use the current VALID index from valid_indices mapping if available, 
+        # but operations must happen on the real full data index.
+        list_idx = self.list_widget.currentRow()
+        if list_idx < 0: return
+        
+        # Map list index to real data index
+        if list_idx < len(self.valid_indices):
+            real_idx = self.valid_indices[list_idx]
+        else:
+            real_idx = list_idx
+
+        if not self._validate_numbering(real_idx):
+            return
+            
+        self._apply_numbering_shift(real_idx, delta)
+        self.save_and_refresh(real_idx)
+
+    def insert_question(self, after=True):
+        idx = self.current_q_index
+        new_idx = idx + 1 if after else idx
+        
+        # Validate first
+        if not self._validate_numbering(new_idx):
+            return
+
+        # Shift numbers down to make room
+        self._apply_numbering_shift(new_idx, 1)
+        
+        # Calculate new number based on previous question if possible
+        new_q_num = 1
+        if new_idx > 0:
+            prev_q = self.current_bank_data[new_idx - 1]
+            match = re.match(r'^(\d+)', prev_q.get("question","").strip())
+            if match:
+                new_q_num = int(match.group(1)) + 1
+                
+        # Image shifting
+        img_dir = os.path.join(self.current_bank_path, "images")
+        max_idx = len(self.current_bank_data)
+        
+        # Shift images forward carefully
+        for curr in range(max_idx, new_idx, -1):
+            old = os.path.join(img_dir, f"{curr}.jpg")
+            old_note = os.path.join(img_dir, f"{curr}_note.jpg")
+            if os.path.exists(old):
+                shutil.move(old, os.path.join(img_dir, f"{curr+1}.jpg"))
+            if os.path.exists(old_note):
+                shutil.move(old_note, os.path.join(img_dir, f"{curr+1}_note.jpg"))
+        
+        new_q_text = "سؤال جديد" if ConfigManager.get_language() == "ar" else "New Question"
+        empty_q = {
+            "type": "quiz",
+            "question": f"{new_q_num}. {new_q_text}",
+            "options": [],
+            "correct_options": [0],
+            "explanation": ""
+        }
+        
+        self.current_bank_data.insert(new_idx, empty_q)
+        
+        self.save_and_refresh(new_idx)
+        if not self.edit_mode:
+            self.toggle_edit_mode()
+
     def toggle_edit_mode(self):
         self.edit_mode = not self.edit_mode
         q = self.current_bank_data[self.current_q_index]
+
+        self.set_nav_shortcuts_enabled(not self.edit_mode)
 
         if self.edit_mode:
             self.q_text_edit.setText(q.get("question", ""))
@@ -476,7 +716,7 @@ class QuestionViewer(QMainWindow):
                 self.edit_mode_button_group.removeButton(btn)
             
             self.option_rows = []
-            for i, opt in enumerate(q.get("options", [])):
+            for i, opt in enumerate(q.get("options",[])):
                 self.add_option_row(opt, i == self.temp_correct_idx)
             
             self.ans_box.show()
@@ -519,14 +759,14 @@ class QuestionViewer(QMainWindow):
         q['question'] = self.q_text_edit.toPlainText()
         q['explanation'] = self.edit_expl.toPlainText()
         
-        final_opts = []
+        final_opts =[]
         for i, row in enumerate(self.option_rows):
             txt = row.line_edit.text().strip()
             final_opts.append(f"{self.generate_prefix(i)} {txt}")
             if row.radio.isChecked(): self.temp_correct_idx = i
         
         q['options'] = final_opts
-        q['correct_options'] = [self.temp_correct_idx]
+        q['correct_options'] =[self.temp_correct_idx]
         
         with open(os.path.join(self.current_bank_path, "bank.json"), 'w', encoding='utf-8') as f:
             json.dump(self.current_bank_data, f, indent=2, ensure_ascii=False)
@@ -544,6 +784,8 @@ class QuestionViewer(QMainWindow):
             if w: w.setVisible(not v)
             
         self.lbl_expl.setVisible(not v); self.edit_expl.setVisible(v)
+        self.note_img_tools.setVisible(v)
+        
         self.btn_reveal.setVisible(not v); self.btn_save.setVisible(v)
         
         if v:
@@ -615,10 +857,8 @@ class QuestionViewer(QMainWindow):
         if f:
             dest = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}.jpg")
             if not os.path.exists(os.path.dirname(dest)): os.makedirs(os.path.dirname(dest))
-            shutil.copy(f, dest); 
-            
-            list_idx = self.valid_indices.index(self.current_q_index)
-            self.load_question(list_idx)
+            shutil.copy(f, dest) 
+            self.load_question(self.list_widget.currentRow())
 
     def open_cropper_for_image(self):
         from ui.window import ImageCropperApp
@@ -629,11 +869,52 @@ class QuestionViewer(QMainWindow):
         self.cropper_ref = ImageCropperApp(single_image_mode=True)
         self.cropper_ref.load_single_image(img_p)
         self.cropper_ref.show()
+        
+    def delete_image(self):
+        if QMessageBox.question(self, tr("delete"), "Are you sure you want to delete this question image?") == QMessageBox.StandardButton.Yes:
+            img_p = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}.jpg")
+            if os.path.exists(img_p):
+                os.remove(img_p)
+                self.load_question(self.list_widget.currentRow())
+        
+    def replace_note_image(self):
+        f, _ = QFileDialog.getOpenFileName(self, tr("replace_img"), "", "Images (*.jpg *.png)")
+        if f:
+            dest = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}_note.jpg")
+            if not os.path.exists(os.path.dirname(dest)): os.makedirs(os.path.dirname(dest))
+            shutil.copy(f, dest)
+            self.load_question(self.list_widget.currentRow())
+
+    def open_cropper_for_note_image(self):
+        from ui.window import ImageCropperApp
+        img_p = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}_note.jpg")
+        if not os.path.exists(img_p):
+            QMessageBox.warning(self, "Error", "No note image exists for this question. Add one first.")
+            return
+        self.cropper_ref = ImageCropperApp(single_image_mode=True)
+        self.cropper_ref.load_single_image(img_p)
+        self.cropper_ref.show()
+
+    def delete_note_image(self):
+        if QMessageBox.question(self, tr("delete"), "Are you sure you want to delete this note image?") == QMessageBox.StandardButton.Yes:
+            img_p = os.path.join(self.current_bank_path, "images", f"{self.current_q_index+1}_note.jpg")
+            if os.path.exists(img_p):
+                os.remove(img_p)
+                self.load_question(self.list_widget.currentRow())
 
     def delete_current_question(self):
         if QMessageBox.question(self, tr("delete"), tr("confirm_delete")) != QMessageBox.StandardButton.Yes: return
         idx = self.current_q_index
+        
+        # Validate numbering for subsequent questions before doing anything
+        if not self._validate_numbering(idx + 1):
+            return
+
+        # Shift numbering of subsequent questions DOWN by 1 (e.g. 6->5)
+        self._apply_numbering_shift(idx + 1, -1)
+
         self.current_bank_data.pop(idx)
+        
         img_dir = os.path.join(self.current_bank_path, "images")
         
         t_img = os.path.join(img_dir, f"{idx+1}.jpg")
@@ -658,24 +939,15 @@ class QuestionViewer(QMainWindow):
                 break
             curr += 1
             
+        next_idx = min(idx, len(self.current_bank_data)-1)
+        self.save_and_refresh(next_idx)
+
+    def save_and_refresh(self, index_to_select):
         with open(os.path.join(self.current_bank_path, "bank.json"), 'w', encoding='utf-8') as f:
             json.dump(self.current_bank_data, f, indent=2, ensure_ascii=False)
-            
-        next_idx = min(idx, len(self.current_bank_data)-1)
-        self.refresh_list(next_idx)
+        self.refresh_list(index_to_select)
 
     def go_home(self):
         from ui.menu import MainMenu
         self.menu = MainMenu(None); self.menu.show(); self.close()
-
-    def keyPressEvent(self, e):
-        if self.edit_mode: return super().keyPressEvent(e)
-        if e.key() == Qt.Key.Key_Space: self.reveal_answer()
-        elif e.key() == Qt.Key.Key_Left: 
-            if self.list_widget.currentRow() > 0:
-                self.list_widget.setCurrentRow(self.list_widget.currentRow() - 1)
-        elif e.key() == Qt.Key.Key_Right: 
-             if self.list_widget.currentRow() < self.list_widget.count() - 1:
-                self.list_widget.setCurrentRow(self.list_widget.currentRow() + 1)
-        super().keyPressEvent(e)
 # --- END OF FILE ui/viewer.py ---
